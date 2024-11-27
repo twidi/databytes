@@ -127,30 +127,76 @@ class BinaryStruct:
     _nb_bytes: ClassVar[int] = 0
     _struct_format: ClassVar[str] = ""
 
-    def __init__(self, buffer: Buffer) -> None:
-        """Initialize with a buffer"""
+    def __init__(
+        self, buffer: Buffer, offset_from_parent_struct_buffer: int = 0
+    ) -> None:
+        """Initialize with a buffer and its offset from parent buffer"""
+        if len(buffer) < self._nb_bytes:
+            raise ValueError(
+                f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}"
+            )
         self._buffer: Buffer = buffer
+        self._offset_from_parent_struct_buffer = offset_from_parent_struct_buffer
         self.create_sub_instances()
 
+    @property
+    def buffer(self) -> Buffer:
+        """Get the buffer for this struct, limited to its size."""
+        if not hasattr(self, "_buffer") or self._buffer is None:
+            raise ValueError("No buffer available")
+        return self._buffer[: self._nb_bytes]
+
+    @buffer.setter
+    def buffer(self, buffer: Buffer) -> None:
+        """Set the buffer for this struct and update all sub-structs."""
+        if len(buffer) < self._nb_bytes:
+            raise ValueError(
+                f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}"
+            )
+        self._buffer = buffer
+
+        def update_buffers(structs: BinaryStructOrRecursiveArrayOf) -> None:
+            if isinstance(structs, list):
+                for struct in structs:
+                    update_buffers(struct)
+            elif isinstance(structs, BinaryStruct):
+                structs.buffer = self._buffer[
+                    structs._offset_from_parent_struct_buffer :
+                ]
+
+        for field in self._fields.values():
+            if not isinstance(field.db_type, SubStruct):
+                continue
+
+            if isinstance(field.db_type, SubStruct):
+                struct = getattr(self, field.name)
+                if struct is not None:
+                    update_buffers(struct)
+
     def create_sub_instances(self) -> None:
+        """Create sub-instances for all sub-struct fields."""
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
                 continue
 
             if not field.is_array:
                 # if not an array, it's a single struct
-                setattr(
-                    self,
-                    field.name,
-                    field.db_type.python_type(self._buffer[field.offset :]),
+                struct = field.db_type.python_type(
+                    self._buffer[field.offset :],
+                    offset_from_parent_struct_buffer=field.offset,
                 )
+                setattr(self, field.name, struct)
                 continue
 
             # get list(s) of structs following the dimensions
             items = []
             for index in range(field.nb_items):
                 offset = field.offset + (index * field.db_type.single_nb_bytes)
-                items.append(field.db_type.python_type(self._buffer[offset:]))
+                struct = field.db_type.python_type(
+                    self._buffer[offset:], offset_from_parent_struct_buffer=offset
+                )
+                items.append(struct)
+
             setattr(self, field.name, field._reshape_array(items, field.dimensions))
 
     @classmethod

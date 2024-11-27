@@ -87,7 +87,10 @@ def verify_struct_values(data: MyStruct) -> None:
     # Test main struct values
     assert data.uint16 == 12345
     assert data.strings == ["Hello", "World"]
-    assert data.chars == [[b"H", b"e", b"l", b"l", b"o"], [b"W", b"o", b"r", b"l", b"d"]]
+    assert data.chars == [
+        [b"H", b"e", b"l", b"l", b"o"],
+        [b"W", b"o", b"r", b"l", b"d"],
+    ]
     assert abs(data.float64 - 3.14159) < 1e-6
     assert data.uint16s == [
         [[1, 2, 3], [4, 5, 6]],
@@ -171,3 +174,116 @@ def test_struct_layout() -> None:
         + (22 * 2)  # children (MySubStruct[2])
     )
     assert MyStruct._nb_bytes == expected_size
+
+
+def test_buffer_property(test_data: bytes) -> None:
+    """Test the buffer property for reading and writing."""
+    # Test reading buffer
+    data = MyStruct(test_data)
+    assert (
+        data.buffer == test_data[: MyStruct._nb_bytes]
+    )  # Should be limited to struct size
+    verify_struct_values(data)  # Verify initial values
+
+    # Test writing buffer - prepare new data with different values
+    new_data = (
+        struct.pack("<H", 54321)  # uint16
+        + b"Howdy\x00\x00\x00\x00\x00"  # string[10]
+        + b"There\x00\x00\x00\x00\x00"  # string[10]
+        + b"Howdy"  # chars[5]
+        + b"There"  # chars[5]
+        + struct.pack("<d", 2.71828)  # float64
+        + struct.pack("<3H", 10, 20, 30)  # uint16s[3], element 0
+        + struct.pack("<3H", 40, 50, 60)  # uint16s[3], element 1
+        + struct.pack("<3H", 70, 80, 90)  # uint16s[3], element 2
+        + struct.pack("<3H", 100, 110, 120)  # uint16s[3], element 3
+        # child: MySubStruct
+        + b"Mom\0\0"  # foo: string[5]
+        + struct.pack("<H", 24)  # bar: uint16
+        + b"qux42"  # qux[0]: string[5]
+        + b"qux43"  # qux[1]: string[5]
+        + struct.pack("<B", 21)  # sub.simple: MySubSubStruct
+        + struct.pack("<B", 22)  # subs[0][0].simple: MySubSubStruct
+        + struct.pack("<B", 23)  # subs[0][1].simple: MySubSubStruct
+        + struct.pack("<B", 24)  # subs[1][0].simple: MySubSubStruct
+        + struct.pack("<B", 25)  # subs[1][1].simple: MySubSubStruct
+        # children: MySubStruct * 2
+        # children[0]: MySubStruct
+        + b"Dad\0\0"  # children[0].foo: string[5]
+        + struct.pack("<H", 201)  # children[0].bar: uint16
+        + b"qux44"  # children[0].qux[0]: string[5]
+        + b"qux45"  # children[0].qux[1]: string[5]
+        + struct.pack("<B", 26)  # children[0].sub.simple: MySubSubStruct
+        + struct.pack("<B", 27)  # children[0].subs[0][0].simple: MySubSubStruct
+        + struct.pack("<B", 28)  # children[0].subs[0][1].simple: MySubSubStruct
+        + struct.pack("<B", 29)  # children[0].subs[1][0].simple: MySubSubStruct
+        + struct.pack("<B", 30)  # children[0].subs[1][1].simple: MySubSubStruct
+        # children[1]: MySubStruct
+        + b"Sis\0\0"  # children[1].foo: string[5]
+        + struct.pack("<H", 202)  # children[1].bar: uint16
+        + b"qux46"  # children[1].qux[0]: string[5]
+        + b"qux47"  # children[1].qux[1]: string[5]
+        + struct.pack("<B", 31)  # children[1].sub.simple: MySubSubStruct
+        + struct.pack("<B", 32)  # children[1].subs[0][0].simple: MySubSubStruct
+        + struct.pack("<B", 33)  # children[1].subs[0][1].simple: MySubSubStruct
+        + struct.pack("<B", 34)  # children[1].subs[1][0].simple: MySubSubStruct
+        + struct.pack("<B", 35)  # children[1].subs[1][1].simple: MySubSubStruct
+    )
+
+    # Update buffer and verify values are changed
+    data.buffer = new_data
+    assert data.buffer == new_data[: MyStruct._nb_bytes]
+
+    # Verify all values are updated, including sub-structs
+    assert data.uint16 == 54321
+    assert data.strings == ["Howdy", "There"]
+    assert data.chars == [
+        [b"H", b"o", b"w", b"d", b"y"],
+        [b"T", b"h", b"e", b"r", b"e"],
+    ]
+    assert abs(data.float64 - 2.71828) < 1e-6
+    assert data.uint16s == [
+        [[10, 20, 30], [40, 50, 60]],
+        [[70, 80, 90], [100, 110, 120]],
+    ]
+
+    # Test child struct
+    assert data.child.foo == "Mom"
+    assert data.child.bar == 24
+    assert data.child.qux == ["qux42", "qux43"]
+    assert data.child.sub.simple == 21
+    assert data.child.subs[0][0].simple == 22
+    assert data.child.subs[0][1].simple == 23
+    assert data.child.subs[1][0].simple == 24
+    assert data.child.subs[1][1].simple == 25
+
+    # Test children array
+    assert data.children[0].foo == "Dad"
+    assert data.children[0].bar == 201
+    assert data.children[0].qux == ["qux44", "qux45"]
+    assert data.children[0].sub.simple == 26
+    assert data.children[0].subs[0][0].simple == 27
+    assert data.children[0].subs[0][1].simple == 28
+    assert data.children[0].subs[1][0].simple == 29
+    assert data.children[0].subs[1][1].simple == 30
+
+    assert data.children[1].foo == "Sis"
+    assert data.children[1].bar == 202
+    assert data.children[1].qux == ["qux46", "qux47"]
+    assert data.children[1].sub.simple == 31
+    assert data.children[1].subs[0][0].simple == 32
+    assert data.children[1].subs[0][1].simple == 33
+    assert data.children[1].subs[1][0].simple == 34
+    assert data.children[1].subs[1][1].simple == 35
+
+    # Test error cases
+    with pytest.raises(ValueError, match="Buffer too small"):
+        data.buffer = new_data[:-1]  # Try to set a buffer that's too small
+
+    data.free_buffer()
+    with pytest.raises(ValueError, match="No buffer available"):
+        _ = data.buffer  # Try to read buffer after it's freed
+
+    # Test at creation time with a buffer that's too small
+    with pytest.raises(ValueError, match="Buffer too small"):
+        MyStruct(new_data[:-1])
