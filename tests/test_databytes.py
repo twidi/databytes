@@ -2,6 +2,7 @@ import struct
 import sys
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -127,6 +128,29 @@ def verify_struct_values(data: MyStruct) -> None:
     assert data.children[1].subs[1][1].simple == 15
 
 
+def get_struct_layout(struct_class: type[BinaryStruct]) -> dict[str, dict[str, Any]]:
+    """Get a dictionary representation of the structure layout."""
+    layout = {}
+    for name, field in struct_class._fields.items():
+        dimensions = field.dimensions if field.dimensions else None
+        python_type = field.db_type.python_type.__name__
+        if field.dimensions:
+            nb_dimensions = len(field.dimensions)
+            if field.db_type.collapse_first_dimension:
+                nb_dimensions -= 1
+            python_type = (
+                ("list[" * nb_dimensions) + python_type + ("]" * nb_dimensions)
+            )
+        layout[name] = {
+            "offset": field.offset,
+            "size": field.nb_bytes,
+            "format": field.db_type.struct_format,
+            "dimensions": dimensions,
+            "python_type": python_type,
+        }
+    return layout
+
+
 def test_shared_memory(test_data: bytes) -> None:
     """Test using shared memory buffer."""
     shm = SharedMemory(create=True, size=MyStruct._nb_bytes)
@@ -159,9 +183,57 @@ def test_struct_layout() -> None:
     """Test the structure layout sizes and offsets."""
     # MySubSubStruct layout
     assert MySubSubStruct._nb_bytes == 1
+    assert MySubSubStruct._struct_format == "B"
+    assert get_struct_layout(MySubSubStruct) == {
+        "simple": {
+            "offset": 0,
+            "size": 1,
+            "format": "B",
+            "dimensions": None,
+            "python_type": "int",
+        }
+    }
 
     # MySubStruct layout
     assert MySubStruct._nb_bytes == 22  # 5 + 2 + (5*2) + 1 + (1*2*2)
+    assert MySubStruct._struct_format == "5sH5s5sBBBBB"
+    assert get_struct_layout(MySubStruct) == {
+        "foo": {
+            "offset": 0,
+            "size": 5,
+            "format": "5s",
+            "dimensions": (5,),
+            "python_type": "str",
+        },
+        "bar": {
+            "offset": 5,
+            "size": 2,
+            "format": "H",
+            "dimensions": None,
+            "python_type": "int",
+        },
+        "qux": {
+            "offset": 7,
+            "size": 10,
+            "format": "5s5s",
+            "dimensions": (5, 2),
+            "python_type": "list[str]",
+        },
+        "sub": {
+            "offset": 17,
+            "size": 1,
+            "format": "B",
+            "dimensions": None,
+            "python_type": "MySubSubStruct",
+        },
+        "subs": {
+            "offset": 18,
+            "size": 4,
+            "format": "BBBB",
+            "dimensions": (2, 2),
+            "python_type": "list[list[MySubSubStruct]]",
+        },
+    }
 
     # MyStruct layout
     expected_size = (
@@ -174,6 +246,60 @@ def test_struct_layout() -> None:
         + (22 * 2)  # children (MySubStruct[2])
     )
     assert MyStruct._nb_bytes == expected_size
+    assert (
+        MyStruct._struct_format == "H10s10s10cd12H5sH5s5sBBBBB5sH5s5sBBBBB5sH5s5sBBBBB"
+    )
+    assert get_struct_layout(MyStruct) == {
+        "uint16": {
+            "offset": 0,
+            "size": 2,
+            "format": "H",
+            "dimensions": None,
+            "python_type": "int",
+        },
+        "strings": {
+            "offset": 2,
+            "size": 20,
+            "format": "10s10s",
+            "dimensions": (10, 2),
+            "python_type": "list[str]",
+        },
+        "chars": {
+            "offset": 22,
+            "size": 10,
+            "format": "10c",
+            "dimensions": (5, 2),
+            "python_type": "list[list[bytes]]",
+        },
+        "float64": {
+            "offset": 32,
+            "size": 8,
+            "format": "d",
+            "dimensions": None,
+            "python_type": "float",
+        },
+        "uint16s": {
+            "offset": 40,
+            "size": 24,
+            "format": "12H",
+            "dimensions": (3, 2, 2),
+            "python_type": "list[list[list[int]]]",
+        },
+        "child": {
+            "offset": 64,
+            "size": 22,
+            "format": "5sH5s5sBBBBB",
+            "dimensions": None,
+            "python_type": "MySubStruct",
+        },
+        "children": {
+            "offset": 86,
+            "size": 44,
+            "format": "5sH5s5sBBBBB5sH5s5sBBBBB",
+            "dimensions": (2,),
+            "python_type": "list[MySubStruct]",
+        },
+    }
 
 
 def test_buffer_property(test_data: bytes) -> None:
