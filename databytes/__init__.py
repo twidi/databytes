@@ -1,57 +1,85 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from functools import cached_property
 from multiprocessing.shared_memory import SharedMemory
 from struct import Struct
-from typing import Any, ClassVar, NamedTuple, Optional, get_type_hints
+from typing import (
+    Any,
+    ClassVar,
+    NamedTuple,
+    Optional,
+    TypeAlias,
+    TypeVar,
+    Union,
+    get_type_hints,
+)
 
 from rich.console import Console
 from rich.table import Table
+from typing_extensions import _AnnotatedAlias
 
-from .types import Buffer, DBType, string
+from .types import Buffer, DBType, Dimensions, SubStruct, string
+
+T = TypeVar("T")
+
+RecursiveArray: TypeAlias = Union[list[T], list["RecursiveArray[T]"]]
+BinaryStructOrRecursiveArrayOf: TypeAlias = (
+    "BinaryStruct" | RecursiveArray["BinaryStructOrRecursiveArrayOf"]
+)
 
 
-class FieldInfo(NamedTuple):
+@dataclass
+class FieldInfo:
     """Information about a field in the binary structure"""
 
     name: str
-    struct: Struct  # better to use unpack_from from struct instance because format is pre-compiled
+    raw_struct: Struct  # better to use unpack_from from struct instance because format is pre-compiled
     offset: int
     nb_bytes: int
     db_type: DBType
     format: str
-    dimensions: tuple[int, ...] = ()
+    dimensions: Dimensions = ()
+    sub: Optional[BinaryStructOrRecursiveArrayOf] = None
 
-    @property
+    @cached_property
     def is_array(self) -> bool:
         return bool(self.dimensions)
 
-    @property
+    @cached_property
     def nb_dimensions(self) -> int:
         return len(self.dimensions)
 
+    @cached_property
+    def nb_items(self) -> int:
+        if not self.dimensions:
+            return 1
+        result = 1
+        for dimension in self.dimensions:
+            result *= dimension
+        return result
+
     @staticmethod
-    def _reshape_array(array: list[Any], dimensions: tuple[int, ...]) -> list[Any]:
+    def _reshape_array(array: list[T], dimensions: Dimensions) -> RecursiveArray[T]:
         """Reshape a flat array into nested lists according to the dimensions.
         For example with dimensions (2, 3) and values [1, 2, 3, 4, 5, 6],
         returns [[1, 2], [3, 4], [5, 6]]."""
         if len(dimensions) <= 1:
             return array
-        current = array
+        current: RecursiveArray[T] = array
         for dim in dimensions[:-1]:
-            new = []
             chunk_size = len(current) // (len(current) // dim)
-            for i in range(0, len(current), chunk_size):
-                new.append(current[i : i + chunk_size])
-            current = new
+            current = [
+                current[i : i + chunk_size] for i in range(0, len(current), chunk_size)
+            ]
         return current
 
     def read_from_buffer(self, buffer: Buffer) -> Any:
-        values = self.struct.unpack_from(buffer, self.offset)
-
+        values = self.raw_struct.unpack_from(buffer, self.offset)
         if self.is_array:
             # Special case for char arrays: convert to string
             if self.db_type.collapse_first_dimension:
-                # First dimension is kept together length, convert each chunk to string
+                # First dimension is kept together length, convert each chunk to a single value
                 items = [
                     self.db_type.convert_first_dimension(value) for value in values
                 ]
@@ -72,7 +100,7 @@ class FieldInfo(NamedTuple):
         return values[0]
 
 
-class BinaryField:
+class FieldDescriptor:
     """Descriptor for lazy loading binary fields"""
 
     def __init__(self, field_name: str) -> None:
@@ -89,7 +117,7 @@ class BinaryField:
             raise ValueError("No buffer available")
         if owner is None:
             raise ValueError("No owner class")
-        return owner.read_field(instance._buffer, self.field_name)
+        return instance.read_field(self.field_name)
 
 
 class BinaryStruct:
@@ -97,10 +125,44 @@ class BinaryStruct:
 
     _fields: ClassVar[dict[str, FieldInfo]] = {}
     _nb_bytes: ClassVar[int] = 0
+    _struct_format: ClassVar[str] = ""
 
     def __init__(self, buffer: Buffer) -> None:
         """Initialize with a buffer"""
         self._buffer: Buffer = buffer
+        self.create_sub_instances()
+
+    def create_sub_instances(self) -> None:
+        for field in self._fields.values():
+            if not isinstance(field.db_type, SubStruct):
+                continue
+
+            if not field.is_array:
+                # if not an array, it's a single struct
+                setattr(
+                    self,
+                    field.name,
+                    field.db_type.python_type(self._buffer[field.offset :]),
+                )
+                continue
+
+            # get list(s) of structs following the dimensions
+            items = []
+            for index in range(field.nb_items):
+                offset = field.offset + (index * field.db_type.single_nb_bytes)
+                items.append(field.db_type.python_type(self._buffer[offset:]))
+            setattr(self, field.name, field._reshape_array(items, field.dimensions))
+
+    @classmethod
+    def __class_getitem__(cls, params: Any) -> _AnnotatedAlias:
+        if not isinstance(params, tuple):
+            params = (params,)
+        for param in params:
+            if not isinstance(param, int) or param <= 0:
+                raise TypeError(
+                    f"{cls.__name__}[*dimensions]: dimensions should be literal positive integers."
+                )
+        return _AnnotatedAlias(cls, params)
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -115,15 +177,19 @@ class BinaryStruct:
         # Calculate field information
         fields: dict[str, FieldInfo] = {}
         current_offset = 0
+        dimensions: list[int]
 
         for name, type_hint in hints.items():
+            base_type = type_hint
+            dimensions = []
 
             if hasattr(type_hint, "__metadata__"):  # Handle Array types
                 base_type = type_hint.__origin__
-                if not issubclass(base_type, DBType):
+                if not issubclass(base_type, DBType) and not issubclass(
+                    base_type, BinaryStruct
+                ):
                     continue
 
-                dimensions: list[int] = []
                 for dimension in type_hint.__metadata__:
                     if not isinstance(dimension, int) or dimension <= 0:
                         raise TypeError(
@@ -131,43 +197,45 @@ class BinaryStruct:
                         )
                     dimensions.append(dimension)
 
-                db_type = base_type(tuple(dimensions))
-
-            else:  # Handle regular types
-                if not issubclass(type_hint, DBType):
-                    continue
-                db_type = type_hint()
+            if issubclass(base_type, BinaryStruct):
+                # Handle nested struct fields
+                db_type = SubStruct(python_type=base_type, dimensions=tuple(dimensions))
+            elif not issubclass(base_type, DBType):
+                continue
+            else:
+                db_type = base_type(dimensions=tuple(dimensions))
 
             fields[name] = FieldInfo(
                 name=name,
-                struct=Struct(format := f"<{db_type.struct_format}"),
+                raw_struct=Struct(format := f"<{db_type.struct_format}"),
                 offset=current_offset,
                 nb_bytes=db_type.nb_bytes,
                 db_type=db_type,
-                format=format,
+                format=format if db_type.struct_format else "struct",
                 dimensions=db_type.dimensions,
             )
             # Create descriptor for the field
-            setattr(cls, name, BinaryField(name))
+            # (we keep normal access for sub structs, instance fields will be created in `create_sub_instances` at __init__ time)
+            if not isinstance(base_type, BinaryStruct):
+                setattr(cls, name, FieldDescriptor(name))
             current_offset += fields[name].nb_bytes
 
         cls._fields = fields
         cls._nb_bytes = current_offset
+        cls._struct_format = "".join(
+            field.db_type.struct_format for field in cls._fields.values()
+        )
 
-    @classmethod
-    def read_field(cls, buffer: Buffer, field_name: str) -> Any:
+    def read_field(self, field_name: str) -> Any:
         """Read a field from a buffer"""
-        if not hasattr(cls, "_fields"):
-            raise ValueError("No fields defined")
-        if field_name not in cls._fields:
+        if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
-
-        return cls._fields[field_name].read_from_buffer(buffer)
+        return self._fields[field_name].read_from_buffer(self._buffer)
 
     @classmethod
     def print_layout(cls) -> None:
         """Get a string representation of the structure layout"""
-        table = Table()
+        table = Table(title=f"Layout of {cls.__name__}")
 
         # Add columns
         table.add_column("Field Name", style="cyan")
@@ -178,21 +246,21 @@ class BinaryStruct:
         table.add_column("Python Type", style="cyan")
 
         # Add rows
-        for name, info in cls._fields.items():
-            dimensions = str(info.dimensions) if info.dimensions else "-"
-            python_type = info.db_type.python_type.__name__
-            if info.dimensions:
-                nb_dimensions = len(info.dimensions)
-                if info.db_type.collapse_first_dimension:
+        for name, field in cls._fields.items():
+            dimensions = str(field.dimensions) if field.dimensions else "-"
+            python_type = field.db_type.python_type.__name__
+            if field.dimensions:
+                nb_dimensions = len(field.dimensions)
+                if field.db_type.collapse_first_dimension:
                     nb_dimensions -= 1
                 python_type = (
                     ("list\[" * nb_dimensions) + python_type + ("]" * nb_dimensions)
                 )
             table.add_row(
                 name,
-                str(info.offset),
-                str(info.nb_bytes),
-                info.format,
+                str(field.offset),
+                str(field.nb_bytes),
+                field.db_type.struct_format,
                 dimensions,
                 python_type,
             )
@@ -206,3 +274,20 @@ class BinaryStruct:
         # Render to string
         console = Console(record=True)
         console.print(table)
+
+    def free_buffer(self) -> None:
+        if hasattr(self, "_buffer"):
+            self._buffer = None  # type: ignore[assignment]
+
+        def free_structs(structs: BinaryStructOrRecursiveArrayOf) -> None:
+            if isinstance(structs, list):
+                for struct in structs:
+                    free_structs(struct)
+            elif isinstance(structs, BinaryStruct):
+                structs.free_buffer()
+
+        for field in self._fields.values():
+            if isinstance(field.db_type, SubStruct):
+                sub = getattr(self, field.name)
+                if sub is not None:
+                    free_structs(sub)

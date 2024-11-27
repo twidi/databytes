@@ -3,6 +3,7 @@ import struct
 from functools import cached_property
 from math import prod
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     Generic,
@@ -17,19 +18,20 @@ from typing_extensions import _AnnotatedAlias
 
 Buffer: TypeAlias = bytes | bytearray | memoryview
 
-T = TypeVar("T")
+Dimensions: TypeAlias = tuple[int, ...]
+
+DBPythonType = TypeVar("DBPythonType")
 
 
-class DBType(Generic[T]):
+class DBType(Generic[DBPythonType]):
     single_nb_bytes: builtins.int
     single_struct_format: str
-    python_type: type[
-        T
-    ]  # will be auto set by __init_subclass__ reading the type argument T
-    dimensions: tuple[int, ...] = ()
+    # `python_type` will be auto set by __init_subclass__ reading the type argument DBPythonType (except for SubStruct)
+    python_type: type[DBPythonType]
+    dimensions: Dimensions = ()
     collapse_first_dimension: bool = False
 
-    def __init__(self, dimensions: tuple[int, ...] = ()) -> None:
+    def __init__(self, dimensions: Dimensions = ()) -> None:
         self.dimensions = dimensions
 
     @cached_property
@@ -65,8 +67,8 @@ class DBType(Generic[T]):
                 )
         return _AnnotatedAlias(cls, params)
 
-    def convert_first_dimension(self, data: bytes) -> T:
-        return cast(T, data)
+    def convert_first_dimension(self, data: bytes) -> DBPythonType:
+        return cast(DBPythonType, data)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -75,7 +77,7 @@ class DBType(Generic[T]):
         generic_bases = [
             base for base in cls.__orig_bases__ if hasattr(base, "__origin__")  # type: ignore[attr-defined]
         ]
-        # Get the actual type argument (T) from the first generic base
+        # Get the actual type argument (DBPythonType) from the first generic base
         cls.python_type = get_args(generic_bases[0])[0]
 
 
@@ -166,3 +168,23 @@ class string(DBType[builtins.str]):
 
     def convert_first_dimension(self, data: bytes) -> str:
         return data.rstrip(b"\x00").decode()
+
+
+if TYPE_CHECKING:
+    from . import BinaryStruct
+
+DBSubStructPythonType = TypeVar("DBSubStructPythonType", bound="BinaryStruct")
+
+
+class SubStruct(DBType[DBSubStructPythonType]):
+    def __init__(
+        self, python_type: type[DBSubStructPythonType], dimensions: Dimensions = ()
+    ) -> None:
+        super().__init__(dimensions)
+        self.python_type = python_type
+        self.single_nb_bytes = python_type._nb_bytes
+        self.single_struct_format = python_type._struct_format
+
+    @cached_property
+    def struct_format(self) -> str:
+        return self.single_struct_format * self.nb_items
