@@ -109,10 +109,7 @@ class FieldDescriptor:
     ) -> Any:
         if instance is None:
             return self
-        if not hasattr(instance, "_buffer"):
-            raise ValueError("No buffer available")
-        if owner is None:
-            raise ValueError("No owner class")
+
         return instance.read_field(self.field_name)
 
 
@@ -138,7 +135,7 @@ class BinaryStruct:
     @property
     def buffer(self) -> Buffer:
         """Get the buffer for this struct, limited to its size."""
-        if not hasattr(self, "_buffer") or self._buffer is None:
+        if self._buffer is None:
             raise ValueError("No buffer available")
         return self._buffer[: self._nb_bytes]
 
@@ -318,8 +315,7 @@ class BinaryStruct:
         console.print(table)
 
     def free_buffer(self) -> None:
-        if hasattr(self, "_buffer"):
-            self._buffer = None  # type: ignore[assignment]
+        self._buffer = None  # type: ignore[assignment]
 
         def free_structs(structs: BinaryStructOrRecursiveArrayOf) -> None:
             if isinstance(structs, list):
