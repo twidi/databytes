@@ -75,8 +75,8 @@ class FieldInfo:
             ]
         return current
 
-    def read_from_buffer(self, buffer: Buffer) -> Any:
-        values = self.raw_struct.unpack_from(buffer, self.offset)
+    def read_from_buffer(self, buffer: Buffer, instance_offset: int) -> Any:
+        values = self.raw_struct.unpack_from(buffer, instance_offset + self.offset)
         if self.is_array:
             # Special case for char arrays: convert to string
             if self.db_type.collapse_first_dimension:
@@ -96,7 +96,7 @@ class FieldInfo:
         # Single value
         return values[0]
 
-    def write_to_buffer(self, buffer: Buffer, value: Any) -> None:
+    def write_to_buffer(self, buffer: Buffer, instance_offset: int, value: Any) -> None:
         """Write a value to the buffer at the field's offset.
 
         Args:
@@ -136,7 +136,7 @@ class FieldInfo:
 
         # Pack values into buffer
         try:
-            self.raw_struct.pack_into(buffer, self.offset, *values)
+            self.raw_struct.pack_into(buffer, instance_offset + self.offset, *values)
         except StructError as e:
             raise ValueError(f"Failed to pack value(s) {values} into buffer: {e}")
 
@@ -177,16 +177,14 @@ class BinaryStruct:
     _nb_bytes: ClassVar[int] = 0
     _struct_format: ClassVar[str] = ""
 
-    def __init__(
-        self, buffer: Buffer, offset_from_parent_struct_buffer: int = 0
-    ) -> None:
+    def __init__(self, buffer: Buffer, offset: int = 0) -> None:
         """Initialize with a buffer and its offset from parent buffer"""
         if len(buffer) < self._nb_bytes:
             raise ValueError(
                 f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}"
             )
         self._buffer: Buffer = buffer
-        self._offset_from_parent_struct_buffer = offset_from_parent_struct_buffer
+        self._offset = offset
         self.create_sub_instances()
 
     @property
@@ -194,7 +192,7 @@ class BinaryStruct:
         """Get the buffer for this struct, limited to its size."""
         if self._buffer is None:
             raise ValueError("No buffer available")
-        return self._buffer[: self._nb_bytes]
+        return self._buffer[self._offset : self._offset + self._nb_bytes]
 
     @buffer.setter
     def buffer(self, buffer: Buffer) -> None:
@@ -210,9 +208,7 @@ class BinaryStruct:
                 for struct in structs:
                     update_buffers(struct)
             elif isinstance(structs, BinaryStruct):
-                structs.buffer = self._buffer[
-                    structs._offset_from_parent_struct_buffer :
-                ]
+                structs.buffer = self._buffer
 
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
@@ -232,8 +228,7 @@ class BinaryStruct:
             if not field.is_array:
                 # if not an array, it's a single struct
                 struct = field.db_type.python_type(
-                    self._buffer[field.offset :],
-                    offset_from_parent_struct_buffer=field.offset,
+                    self._buffer, offset=self._offset + field.offset
                 )
                 setattr(self, field.name, struct)
                 continue
@@ -241,10 +236,12 @@ class BinaryStruct:
             # get list(s) of structs following the dimensions
             items = []
             for index in range(field.nb_items):
-                offset = field.offset + (index * field.db_type.single_nb_bytes)
-                struct = field.db_type.python_type(
-                    self._buffer[offset:], offset_from_parent_struct_buffer=offset
+                offset = (
+                    self._offset
+                    + field.offset
+                    + (index * field.db_type.single_nb_bytes)
                 )
+                struct = field.db_type.python_type(self._buffer, offset=offset)
                 items.append(struct)
 
             setattr(self, field.name, field._reshape_array(items, field.dimensions))
@@ -326,13 +323,13 @@ class BinaryStruct:
         """Read a field from a buffer"""
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
-        return self._fields[field_name].read_from_buffer(self._buffer)
+        return self._fields[field_name].read_from_buffer(self._buffer, self._offset)
 
     def write_field(self, field_name: str, value: Any) -> None:
         """Write a field to a buffer"""
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
-        self._fields[field_name].write_to_buffer(self._buffer, value)
+        self._fields[field_name].write_to_buffer(self._buffer, self._offset, value)
 
     @classmethod
     def print_layout(cls) -> None:
