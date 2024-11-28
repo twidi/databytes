@@ -30,7 +30,7 @@ DBTYPES_TO_PYTHON = {
     "double": "builtins.float",
     # Other
     "bool": "builtins.bool",
-    "char": "builtins.str",  # used for single chars or arrays of chars
+    "char": "builtins.bytes",  # used for single chars or arrays of chars
     "string": "builtins.str",  # used for single strings or arrays of strings
 }
 

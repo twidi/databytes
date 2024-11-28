@@ -27,6 +27,7 @@ class MySubStruct(BinaryStruct):
 
 class MyStruct(BinaryStruct):
     uint16: t.uint16
+    char: t.char  # a single char
     strings: t.string[10, 2]  # a list of 2 strings of 10 chars max
     chars: t.char[5, 2]  # a list of 2 lists of 5 chars
     float64: t.double
@@ -40,6 +41,7 @@ def test_data() -> bytes:
     """Create sample test data for the tests."""
     return (
         struct.pack("<H", 12345)  # uint16
+        + b"X"  # char
         + b"Hello\x00\x00\x00\x00\x00"  # string[10]
         + b"World\x00\x00\x00\x00\x00"  # string[10]
         + b"Hello"  # chars[5]
@@ -87,6 +89,7 @@ def verify_struct_values(data: MyStruct) -> None:
     """Helper to verify values from a struct instance."""
     # Test main struct values
     assert data.uint16 == 12345
+    assert data.char == b"X"
     assert data.strings == ["Hello", "World"]
     assert data.chars == [
         [b"H", b"e", b"l", b"l", b"o"],
@@ -238,6 +241,7 @@ def test_struct_layout() -> None:
     # MyStruct layout
     expected_size = (
         2  # uint16
+        + 1  # char
         + (10 * 2)  # strings
         + (5 * 2)  # chars
         + 8  # float64
@@ -247,7 +251,7 @@ def test_struct_layout() -> None:
     )
     assert MyStruct._nb_bytes == expected_size
     assert (
-        MyStruct._struct_format == "H10s10s10cd12H5sH5s5sBBBBB5sH5s5sBBBBB5sH5s5sBBBBB"
+        MyStruct._struct_format == "Hc10s10s10cd12H5sH5s5sBBBBB5sH5s5sBBBBB5sH5s5sBBBBB"
     )
     assert get_struct_layout(MyStruct) == {
         "uint16": {
@@ -257,43 +261,50 @@ def test_struct_layout() -> None:
             "dimensions": None,
             "python_type": "int",
         },
-        "strings": {
+        "char": {
             "offset": 2,
+            "size": 1,
+            "format": "c",
+            "dimensions": None,
+            "python_type": "bytes",
+        },
+        "strings": {
+            "offset": 3,
             "size": 20,
             "format": "10s10s",
             "dimensions": (10, 2),
             "python_type": "list[str]",
         },
         "chars": {
-            "offset": 22,
+            "offset": 23,
             "size": 10,
             "format": "10c",
             "dimensions": (5, 2),
             "python_type": "list[list[bytes]]",
         },
         "float64": {
-            "offset": 32,
+            "offset": 33,
             "size": 8,
             "format": "d",
             "dimensions": None,
             "python_type": "float",
         },
         "uint16s": {
-            "offset": 40,
+            "offset": 41,
             "size": 24,
             "format": "12H",
             "dimensions": (3, 2, 2),
             "python_type": "list[list[list[int]]]",
         },
         "child": {
-            "offset": 64,
+            "offset": 65,
             "size": 22,
             "format": "5sH5s5sBBBBB",
             "dimensions": None,
             "python_type": "MySubStruct",
         },
         "children": {
-            "offset": 86,
+            "offset": 87,
             "size": 44,
             "format": "5sH5s5sBBBBB5sH5s5sBBBBB",
             "dimensions": (2,),
@@ -314,6 +325,7 @@ def test_buffer_property(test_data: bytes) -> None:
     # Test writing buffer - prepare new data with different values
     new_data = (
         struct.pack("<H", 54321)  # uint16
+        + b"Y"  # char
         + b"Howdy\x00\x00\x00\x00\x00"  # string[10]
         + b"There\x00\x00\x00\x00\x00"  # string[10]
         + b"Howdy"  # chars[5]
@@ -362,6 +374,7 @@ def test_buffer_property(test_data: bytes) -> None:
 
     # Verify all values are updated, including sub-structs
     assert data.uint16 == 54321
+    assert data.char == b"Y"
     assert data.strings == ["Howdy", "There"]
     assert data.chars == [
         [b"H", b"o", b"w", b"d", b"y"],

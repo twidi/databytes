@@ -23,6 +23,7 @@ class MySubStruct(BinaryStruct):
 
 class MyStruct(BinaryStruct):
     uint16: t.uint16
+    char: t.char  # a single char
     strings: t.string[10, 2]  # a list of 2 strings of 10 chars max
     chars: t.char[5, 2]  # a list of 2 lists of 5 chars
     float64: t.double
@@ -34,13 +35,15 @@ class MyStruct(BinaryStruct):
 def print_struct_values(struct: MyStruct) -> None:
     """Helper to print values from a struct instance"""
     uint16: int = struct.uint16
+    char: bytes = struct.char
     strings: list[str] = struct.strings
-    chars: list[list[str]] = struct.chars
+    chars: list[list[bytes]] = struct.chars
     float64: float = struct.float64
     uint16s: list[list[list[int]]] = struct.uint16s
 
     print("\nValues:")
     print(f"uint16: {uint16}")
+    print(f"char: {char!r}")
     print(f"strings: {strings}")
     print(f"chars: {chars}")
     print(f"float64: {float64}")
@@ -133,6 +136,7 @@ if __name__ == "__main__":
     # Create sample data
     test_data = (
         struct.pack("<H", 12345)  # uint16
+        + b"a"  # char
         + b"Hello\x00\x00\x00\x00\x00"  # string[10]
         + b"World\x00\x00\x00\x00\x00"  # string[10]
         + b"Hello"  # chars[5]

@@ -92,10 +92,6 @@ class FieldInfo:
             # For arrays, convert to a list of values and reshape according to dimensions
             return self._reshape_array(list(values), self.dimensions)
 
-        if isinstance(values[0], bytes):
-            # Single char
-            return values[0].decode()
-
         # Single value
         return values[0]
 
