@@ -22,6 +22,8 @@ Dimensions: TypeAlias = tuple[int, ...]
 
 DBPythonType = TypeVar("DBPythonType")
 
+NULL = b"\0"
+
 
 class DBType(Generic[DBPythonType]):
     single_nb_bytes: builtins.int
@@ -177,10 +179,10 @@ class bool(DBType[builtins.bool]):
         Returns:
             The value as a bool
         """
-        try:
-            return builtins.bool(value)
-        except (ValueError, TypeError) as e:
-            raise TypeError(f"Cannot convert {value!r} to bool: {e}")
+        if not isinstance(value, builtins.bool):
+            raise TypeError(f"Expected bool, got {type(value).__name__}")
+
+        return value
 
 
 class char(DBType[builtins.bytes]):
@@ -197,7 +199,7 @@ class char(DBType[builtins.bytes]):
         Returns:
             The character as a single byte
         """
-        if not isinstance(value, bytes):
+        if not isinstance(value, builtins.bytes):
             raise TypeError(f"Expected bytes, got {type(value).__name__}")
 
         if len(value) != 1:
@@ -236,7 +238,7 @@ class string(DBType[builtins.str]):
             TypeError: If value is not a string
             ValueError: If string is longer than the allocated space
         """
-        if not isinstance(value, str):
+        if not isinstance(value, builtins.str):
             raise TypeError(f"Expected str, got {type(value).__name__}")
 
         encoded = value.encode()
