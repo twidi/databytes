@@ -255,7 +255,7 @@ class BinaryStruct:
             )
             # Create descriptor for the field
             # (we keep normal access for sub structs, instance fields will be created in `create_sub_instances` at __init__ time)
-            if not isinstance(base_type, BinaryStruct):
+            if not issubclass(base_type, BinaryStruct):
                 setattr(cls, name, FieldDescriptor(name))
             current_offset += fields[name].nb_bytes
 
