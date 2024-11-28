@@ -426,3 +426,172 @@ def test_buffer_property(test_data: bytes) -> None:
     # Test at creation time with a buffer that's too small
     with pytest.raises(ValueError, match="Buffer too small"):
         MyStruct(new_data[:-1])
+
+
+def test_field_writing(test_data: bytes) -> None:
+    """Test writing individual fields."""
+    data = MyStruct(bytearray(test_data))  # Use bytearray to make it mutable
+    verify_struct_values(data)  # Verify initial values
+
+    # Test writing basic types
+    data.uint16 = 54321
+    assert data.uint16 == 54321
+
+    # Test writing single char
+    data.char = b"Y"
+    assert data.char == b"Y"
+
+    # Test error on invalid char types
+    with pytest.raises(TypeError, match="Expected bytes, got str"):
+        data.char = "Z"  # type: ignore[assignment]
+
+    with pytest.raises(TypeError, match="Expected bytes, got int"):
+        data.char = 65  # type: ignore[assignment]
+
+    data.float64 = 2.71828
+    assert abs(data.float64 - 2.71828) < 1e-6
+
+    # Test writing strings
+    data.strings = ["Howdy", "There"]
+    assert data.strings == ["Howdy", "There"]
+
+    # Test writing chars
+    data.chars = [
+        [b"H", b"o", b"w", b"d", b"y"],
+        [b"T", b"h", b"e", b"r", b"e"],
+    ]
+    assert data.chars == [
+        [b"H", b"o", b"w", b"d", b"y"],
+        [b"T", b"h", b"e", b"r", b"e"],
+    ]
+
+    # Test writing multi-dimensional arrays
+    data.uint16s = [
+        [[10, 20, 30], [40, 50, 60]],
+        [[70, 80, 90], [100, 110, 120]],
+    ]
+    assert data.uint16s == [
+        [[10, 20, 30], [40, 50, 60]],
+        [[70, 80, 90], [100, 110, 120]],
+    ]
+
+    # Test writing to sub-struct fields
+    data.child.foo = "Mom"
+    assert data.child.foo == "Mom"
+
+    data.child.bar = 24
+    assert data.child.bar == 24
+
+    data.child.qux = ["qux42", "qux43"]
+    assert data.child.qux == ["qux42", "qux43"]
+
+    data.child.sub.simple = 21
+    assert data.child.sub.simple == 21
+
+    # Test writing to sub-struct array fields
+    data.child.subs[0][0].simple = 22
+    data.child.subs[0][1].simple = 23
+    data.child.subs[1][0].simple = 24
+    data.child.subs[1][1].simple = 25
+    assert data.child.subs[0][0].simple == 22
+    assert data.child.subs[0][1].simple == 23
+    assert data.child.subs[1][0].simple == 24
+    assert data.child.subs[1][1].simple == 25
+
+    # Test writing to array of sub-structs
+    data.children[0].foo = "Dad"
+    data.children[0].bar = 201
+    data.children[0].qux = ["qux44", "qux45"]
+    data.children[0].sub.simple = 26
+    assert data.children[0].foo == "Dad"
+    assert data.children[0].bar == 201
+    assert data.children[0].qux == ["qux44", "qux45"]
+    assert data.children[0].sub.simple == 26
+
+    data.children[1].foo = "Sis"
+    data.children[1].bar = 202
+    data.children[1].qux = ["qux46", "qux47"]
+    data.children[1].sub.simple = 31
+    assert data.children[1].foo == "Sis"
+    assert data.children[1].bar == 202
+    assert data.children[1].qux == ["qux46", "qux47"]
+    assert data.children[1].sub.simple == 31
+
+    # Test error cases
+    with pytest.raises(TypeError, match="Cannot write to immutable buffer"):
+        MyStruct(test_data).uint16 = 1  # Try to write to immutable bytes buffer
+
+    with pytest.raises(TypeError, match="Expected bytes, got str"):
+        data.char = "a"  # type: ignore[assignment]  # Try to write string to char field
+
+    with pytest.raises(TypeError, match="Expected int, got str"):
+        data.uint16 = "not a number"  # type: ignore[assignment]  # Try to write invalid value type
+
+    with pytest.raises(ValueError, match="Failed to pack value"):
+        data.strings = ["Too", "Long", "String"]  # Try to write too many strings
+
+
+def test_strings_dimensions() -> None:
+    """Test string field with differentdimensions."""
+
+    class DimlessStruct(BinaryStruct):
+        str_field: t.string  # Should default to single char string
+
+    dimless = DimlessStruct(bytearray(b"X"))
+    assert dimless.str_field == "X"
+
+    dimless.str_field = "Y"
+    assert dimless.str_field == "Y"
+
+    # Test string too long
+    with pytest.raises(ValueError, match="String is too long .* maximum is 1 byte"):
+        dimless.str_field = "Too long"
+
+    class StringStruct(BinaryStruct):
+        str_field: t.string[5]  # 5-char string
+
+    string = StringStruct(bytearray(b"abc\x00\x00"))
+    assert string.str_field == "abc"
+
+    string.str_field = "def"
+    assert string.str_field == "def"
+
+    # Test string too long
+    with pytest.raises(ValueError, match="String is too long .* maximum is 5 bytes"):
+        string.str_field = "Too long"
+
+    # Test string with non-ASCII chars (which encode to multiple bytes)
+    with pytest.raises(ValueError, match="String is too long .* maximum is 5 bytes"):
+        string.str_field = "αβγ"  # Greek letters, each takes 2 bytes in UTF-8
+
+    class ListOfStringsStruct(BinaryStruct):
+        str_field: t.string[5, 2]  # 2 strings of 5 chars each
+
+    str_list = ListOfStringsStruct(bytearray(b"abc\x00\x00def\x00\x00"))
+    assert str_list.str_field == ["abc", "def"]
+
+    str_list.str_field = ["ghi", "jkl"]
+    assert str_list.str_field == ["ghi", "jkl"]
+
+    with pytest.raises(ValueError, match="String is too long .* maximum is 5 bytes"):
+        str_list.str_field = ["Too...", "Long"]
+
+    with pytest.raises(ValueError, match="Failed to pack value"):
+        str_list.str_field = ["Too", "Many", "Strs"]
+
+    class ListOfListsOfStringsStruct(BinaryStruct):
+        str_field: t.string[5, 2, 2]  # 2 lists of 2 strings of 5 chars each
+
+    str_list_list = ListOfListsOfStringsStruct(
+        bytearray(b"abc\x00\x00def\x00\x00ghi\x00\x00jkl\x00\x00")
+    )
+    assert str_list_list.str_field == [["abc", "def"], ["ghi", "jkl"]]
+
+    str_list_list.str_field = [["mno", "pqr"], ["stu", "vwx"]]
+    assert str_list_list.str_field == [["mno", "pqr"], ["stu", "vwx"]]
+
+    with pytest.raises(ValueError, match="String is too long .* maximum is 5 bytes"):
+        str_list_list.str_field = [["Too...", "Long"], ["Too...", "Long"]]
+
+    with pytest.raises(ValueError, match="Failed to pack value"):
+        str_list_list.str_field = [["It's", "Ok"], ["Too", "Many", "Strs"]]

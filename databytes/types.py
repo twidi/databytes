@@ -70,6 +70,21 @@ class DBType(Generic[DBPythonType]):
     def convert_first_dimension(self, data: bytes) -> DBPythonType:
         return cast(DBPythonType, data)
 
+    def convert_to_bytes(self, value: Any) -> Any:
+        """Convert a Python value to a format suitable for struct.pack.
+
+        Args:
+            value: The value to convert
+
+        Returns:
+            The converted value ready for struct.pack
+        """
+        if not isinstance(value, self.python_type):
+            raise TypeError(
+                f"Expected {self.python_type.__name__}, got {type(value).__name__}"
+            )
+        return value
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
 
@@ -153,11 +168,44 @@ class bool(DBType[builtins.bool]):
     single_nb_bytes = 1
     single_struct_format = "?"
 
+    def convert_to_bytes(self, value: Any) -> builtins.bool:
+        """Convert a value to bool.
+
+        Args:
+            value: The value to convert
+
+        Returns:
+            The value as a bool
+        """
+        try:
+            return builtins.bool(value)
+        except (ValueError, TypeError) as e:
+            raise TypeError(f"Cannot convert {value!r} to bool: {e}")
+
 
 class char(DBType[builtins.bytes]):
     # used for single chars or arrays of chars (returned as byte or array of bytes)
     single_nb_bytes = 1
     single_struct_format = "c"
+
+    def convert_to_bytes(self, value: Any) -> bytes:
+        """Convert a character value to bytes.
+
+        Args:
+            value: The character value to convert (bytes)
+
+        Returns:
+            The character as a single byte
+        """
+        if not isinstance(value, bytes):
+            raise TypeError(f"Expected bytes, got {type(value).__name__}")
+
+        if len(value) != 1:
+            raise ValueError(
+                f"Bytes value must be exactly 1 byte long, got {len(value)}"
+            )
+
+        return value
 
 
 class string(DBType[builtins.str]):
@@ -166,8 +214,39 @@ class string(DBType[builtins.str]):
     single_struct_format = "s"  # return a string, not an array of chars
     collapse_first_dimension = True
 
+    def __init__(self, dimensions: Dimensions = ()) -> None:
+        # If no dimensions provided, assume it's a single char string
+        if not dimensions:
+            dimensions = (1,)
+        super().__init__(dimensions)
+
     def convert_first_dimension(self, data: bytes) -> str:
         return data.rstrip(b"\x00").decode()
+
+    def convert_to_bytes(self, value: Any) -> bytes:
+        """Convert a string value to bytes.
+
+        Args:
+            value: The string value to convert
+
+        Returns:
+            The string as bytes, null-padded to the required length
+
+        Raises:
+            TypeError: If value is not a string
+            ValueError: If string is longer than the allocated space
+        """
+        if not isinstance(value, str):
+            raise TypeError(f"Expected str, got {type(value).__name__}")
+
+        encoded = value.encode()
+        if len(encoded) > self.dimensions[0]:
+            raise ValueError(
+                f"String is too long ({len(encoded)} bytes), maximum is {self.dimensions[0]} bytes"
+            )
+
+        # Only pad with nulls, no truncation
+        return encoded.ljust(self.dimensions[0], b"\x00")
 
 
 if TYPE_CHECKING:

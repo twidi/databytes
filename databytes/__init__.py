@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from multiprocessing.shared_memory import SharedMemory
 from struct import Struct
+from struct import error as StructError
 from typing import (
     Any,
     ClassVar,
@@ -95,6 +96,50 @@ class FieldInfo:
         # Single value
         return values[0]
 
+    def write_to_buffer(self, buffer: Buffer, value: Any) -> None:
+        """Write a value to the buffer at the field's offset.
+
+        Args:
+            buffer: The buffer to write to
+            value: The value to write
+        """
+        if isinstance(buffer, (bytes, str)):
+            raise TypeError("Cannot write to immutable buffer")
+
+        if isinstance(self.db_type, SubStruct):
+            # For sub-structs, we don't write directly, the buffer property setter handles it
+            return
+
+        # Convert value to the format expected by struct.pack
+        if self.is_array:
+            # Flatten the array if needed
+            if self.nb_dimensions > 1:
+
+                def flatten(arr: RecursiveArray[Any], expected_dims: int) -> list[Any]:
+                    if expected_dims <= 1:
+                        return arr if isinstance(arr, list) else [arr]
+                    return [
+                        item
+                        for sublist in arr
+                        for item in flatten(sublist, expected_dims - 1)
+                    ]
+
+                value = flatten(value, self.nb_dimensions)
+
+            if self.db_type.collapse_first_dimension:
+                if self.nb_dimensions == 1:
+                    value = [value]
+            values = [self.db_type.convert_to_bytes(v) for v in value]
+        else:
+            # Single value
+            values = [self.db_type.convert_to_bytes(value)]
+
+        # Pack values into buffer
+        try:
+            self.raw_struct.pack_into(buffer, self.offset, *values)
+        except StructError as e:
+            raise ValueError(f"Failed to pack value(s) {values} into buffer: {e}")
+
 
 class FieldDescriptor:
     """Descriptor for lazy loading binary fields"""
@@ -111,6 +156,18 @@ class FieldDescriptor:
             return self
 
         return instance.read_field(self.field_name)
+
+    def __set__(self, instance: BinaryStruct, value: Any) -> None:
+        """Set the field value by writing to the buffer.
+
+        Args:
+            instance: The BinaryStruct instance
+            value: The value to write
+        """
+        if instance is None:
+            return  # type: ignore[unreachable]
+
+        instance.write_field(self.field_name, value)
 
 
 class BinaryStruct:
@@ -270,6 +327,12 @@ class BinaryStruct:
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
         return self._fields[field_name].read_from_buffer(self._buffer)
+
+    def write_field(self, field_name: str, value: Any) -> None:
+        """Write a field to a buffer"""
+        if field_name not in (self._fields or {}):
+            raise ValueError(f"Unknown field {field_name}")
+        self._fields[field_name].write_to_buffer(self._buffer, value)
 
     @classmethod
     def print_layout(cls) -> None:
