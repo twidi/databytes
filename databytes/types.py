@@ -1,4 +1,7 @@
+import array
 import builtins
+import ctypes
+import mmap
 import struct
 from functools import cached_property
 from math import prod
@@ -14,9 +17,14 @@ from typing import (
     get_args,
 )
 
+import numpy as np
+from typing_extensions import Buffer as TypedBuffer
 from typing_extensions import _AnnotatedAlias
 
-Buffer: TypeAlias = bytes | bytearray | memoryview
+Buffer: TypeAlias = (
+    bytes | bytearray | memoryview | mmap.mmap | array.array | ctypes.Array | np.ndarray
+)
+
 
 Dimensions: TypeAlias = tuple[int, ...]
 

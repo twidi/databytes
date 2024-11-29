@@ -74,7 +74,7 @@ class FieldInfo:
         return current
 
     def read_from_buffer(self, buffer: Buffer, instance_offset: int) -> Any:
-        values = self.raw_struct.unpack_from(buffer, instance_offset + self.offset)
+        values = self.raw_struct.unpack_from(buffer, instance_offset + self.offset)  # type: ignore[arg-type]
         if self.is_array:
             # Special case for char arrays: convert to string
             if self.db_type.collapse_first_dimension:
@@ -134,7 +134,7 @@ class FieldInfo:
 
         # Pack values into buffer
         try:
-            self.raw_struct.pack_into(buffer, instance_offset + self.offset, *values)
+            self.raw_struct.pack_into(buffer, instance_offset + self.offset, *values)  # type: ignore[arg-type]
         except StructError as e:
             raise ValueError(f"Failed to pack value(s) {values} into buffer: {e}")
 
@@ -185,15 +185,7 @@ class BinaryStruct:
         self._offset = offset
         self.create_sub_instances()
 
-    @property
-    def buffer(self) -> Buffer:
-        """Get the buffer for this struct, limited to its size."""
-        if self._buffer is None:
-            raise ValueError("No buffer available")
-        return self._buffer[self._offset : self._offset + self._nb_bytes]
-
-    @buffer.setter
-    def buffer(self, buffer: Buffer) -> None:
+    def set_new_buffer(self, buffer: Buffer) -> None:
         """Set the buffer for this struct and update all sub-structs."""
         if len(buffer) < self._nb_bytes:
             raise ValueError(
@@ -206,7 +198,7 @@ class BinaryStruct:
                 for struct in structs:
                     update_buffers(struct)
             elif isinstance(structs, BinaryStruct):
-                structs.buffer = self._buffer
+                structs.set_new_buffer(buffer)
 
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
@@ -269,6 +261,7 @@ class BinaryStruct:
         fields: dict[str, FieldInfo] = {}
         current_offset = 0
         dimensions: list[int]
+        db_type: DBType
 
         for name, type_hint in hints.items():
             base_type = type_hint
@@ -276,6 +269,8 @@ class BinaryStruct:
 
             if hasattr(type_hint, "__metadata__"):  # Handle Array types
                 base_type = type_hint.__origin__
+                if not isinstance(base_type, type):
+                    continue
                 if not issubclass(base_type, DBType) and not issubclass(
                     base_type, BinaryStruct
                 ):
@@ -288,6 +283,8 @@ class BinaryStruct:
                         )
                     dimensions.append(dimension)
 
+            if not isinstance(base_type, type):
+                continue
             if issubclass(base_type, BinaryStruct):
                 # Handle nested struct fields
                 db_type = SubStruct(python_type=base_type, dimensions=tuple(dimensions))
