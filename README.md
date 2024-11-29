@@ -515,7 +515,7 @@ To use the plugin, in your mypy configuration add `databytes.mypy_plugin` to you
 
 ## Development
 
-To set up the development environment:
+To set up the development environment, first create a virtual environment using the method of your choice, activate it and, in it:
 
 ```bash
 # Install development dependencies
