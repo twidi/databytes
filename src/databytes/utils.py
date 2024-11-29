@@ -43,17 +43,11 @@ def get_layout_info(
     if isinstance(struct_or_class, BinaryStruct):
         base_offset = struct_or_class._offset
         struct_class = struct_or_class.__class__
-    elif isinstance(struct_or_class, type) and issubclass(
-        struct_or_class, BinaryStruct
-    ):
+    elif isinstance(struct_or_class, type) and issubclass(struct_or_class, BinaryStruct):
         base_offset = 0
         struct_class = struct_or_class
     else:
-        raise ValueError(
-            "Expected BinaryStruct or type[BinaryStruct], got {}".format(
-                type(struct_or_class)
-            )
-        )
+        raise ValueError("Expected BinaryStruct or type[BinaryStruct], got {}".format(type(struct_or_class)))
 
     fields: FieldsLayoutInfo = {}
     python_type: type
@@ -107,8 +101,8 @@ def _get_rich_tables(
 
     try:
         from rich.table import Table
-    except ImportError:
-        raise ImportError("`rich` library is not installed")
+    except ImportError as exc:
+        raise ImportError("`rich` library is not installed") from exc
 
     layout = get_layout_info(struct_or_class, include_sub_structs_details)
 
@@ -124,9 +118,7 @@ def _get_rich_tables(
 
     # Add rows
     for field in layout.fields.values():
-        python_type = (
-            str(field.python_full_type).replace("<class '", "").replace("'>", "")
-        )
+        python_type = str(field.python_full_type).replace("<class '", "").replace("'>", "")
         if "." in python_type:
             start, *_, end = python_type.split(".")
             python_type = (start.rsplit("[", 1)[0] + "[" + end) if "[" in start else end

@@ -1,0 +1,5 @@
+recursive-include databytes *.py
+include *.py
+include MANIFEST.in
+include LICENSE
+include README.md

@@ -58,9 +58,7 @@ def test_int64_field() -> None:
 
     # Test int64 array
     data.value_array = [-1_000_000_000_000, 2_000_000_000_000, -3_000_000_000_000]
-    expected_content += pack(
-        "<3q", -1_000_000_000_000, 2_000_000_000_000, -3_000_000_000_000
-    )
+    expected_content += pack("<3q", -1_000_000_000_000, 2_000_000_000_000, -3_000_000_000_000)
     expected_buffer = expected_content + t.NULL * (buffer_size - len(expected_content))
     assert buffer == expected_buffer
     assert data.value_array[0] == -1_000_000_000_000

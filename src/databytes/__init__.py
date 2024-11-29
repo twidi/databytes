@@ -23,9 +23,7 @@ from .types import Buffer, DBType, Dimensions, SubStruct, string
 T = TypeVar("T")
 
 RecursiveArray: TypeAlias = Union[list[T], list["RecursiveArray[T]"]]
-BinaryStructOrRecursiveArrayOf: TypeAlias = (
-    "BinaryStruct" | RecursiveArray["BinaryStructOrRecursiveArrayOf"]
-)
+BinaryStructOrRecursiveArrayOf: TypeAlias = "BinaryStruct" | RecursiveArray["BinaryStructOrRecursiveArrayOf"]
 
 
 @dataclass
@@ -36,7 +34,7 @@ class FieldInfo:
     raw_struct: Struct  # better to use unpack_from from struct instance because format is pre-compiled
     offset: int
     nb_bytes: int
-    db_type: DBType
+    db_type: DBType  # type: ignore[type-arg]
     format: str
     dimensions: Dimensions = ()
     sub: Optional[BinaryStructOrRecursiveArrayOf] = None
@@ -68,9 +66,7 @@ class FieldInfo:
         current: RecursiveArray[T] = array
         for dim in dimensions[:-1]:
             chunk_size = len(current) // (len(current) // dim)
-            current = [
-                current[i : i + chunk_size] for i in range(0, len(current), chunk_size)
-            ]
+            current = [current[i : i + chunk_size] for i in range(0, len(current), chunk_size)]
         return current
 
     def read_from_buffer(self, buffer: Buffer, instance_offset: int) -> Any:
@@ -79,9 +75,7 @@ class FieldInfo:
             # Special case for char arrays: convert to string
             if self.db_type.collapse_first_dimension:
                 # First dimension is kept together length, convert each chunk to a single value
-                items = [
-                    self.db_type.convert_first_dimension(value) for value in values
-                ]
+                items = [self.db_type.convert_first_dimension(value) for value in values]
                 if self.nb_dimensions == 1:
                     # Single entry
                     return items[0]
@@ -116,11 +110,7 @@ class FieldInfo:
                 def flatten(arr: RecursiveArray[Any], expected_dims: int) -> list[Any]:
                     if expected_dims <= 1:
                         return arr if isinstance(arr, list) else [arr]
-                    return [
-                        item
-                        for sublist in arr
-                        for item in flatten(sublist, expected_dims - 1)
-                    ]
+                    return [item for sublist in arr for item in flatten(sublist, expected_dims - 1)]
 
                 value = flatten(value, self.nb_dimensions)
 
@@ -136,7 +126,7 @@ class FieldInfo:
         try:
             self.raw_struct.pack_into(buffer, instance_offset + self.offset, *values)  # type: ignore[arg-type]
         except StructError as e:
-            raise ValueError(f"Failed to pack value(s) {values} into buffer: {e}")
+            raise ValueError(f"Failed to pack value(s) {values} into buffer") from e
 
 
 class FieldDescriptor:
@@ -178,9 +168,7 @@ class BinaryStruct:
     def __init__(self, buffer: Buffer, offset: int = 0) -> None:
         """Initialize with a buffer and its offset from parent buffer"""
         if len(buffer) < self._nb_bytes:
-            raise ValueError(
-                f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}"
-            )
+            raise ValueError(f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}")
         self._buffer: Buffer = buffer
         self._offset = offset
         self.create_sub_instances()
@@ -188,9 +176,7 @@ class BinaryStruct:
     def set_new_buffer(self, buffer: Buffer) -> None:
         """Set the buffer for this struct and update all sub-structs."""
         if len(buffer) < self._nb_bytes:
-            raise ValueError(
-                f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}"
-            )
+            raise ValueError(f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}")
         self._buffer = buffer
 
         def update_buffers(structs: BinaryStructOrRecursiveArrayOf) -> None:
@@ -217,20 +203,14 @@ class BinaryStruct:
 
             if not field.is_array:
                 # if not an array, it's a single struct
-                struct = field.db_type.python_type(
-                    self._buffer, offset=self._offset + field.offset
-                )
+                struct = field.db_type.python_type(self._buffer, offset=self._offset + field.offset)
                 setattr(self, field.name, struct)
                 continue
 
             # get list(s) of structs following the dimensions
             items = []
             for index in range(field.nb_items):
-                offset = (
-                    self._offset
-                    + field.offset
-                    + (index * field.db_type.single_nb_bytes)
-                )
+                offset = self._offset + field.offset + (index * field.db_type.single_nb_bytes)
                 struct = field.db_type.python_type(self._buffer, offset=offset)
                 items.append(struct)
 
@@ -242,9 +222,7 @@ class BinaryStruct:
             params = (params,)
         for param in params:
             if not isinstance(param, int) or param <= 0:
-                raise TypeError(
-                    f"{cls.__name__}[*dimensions]: dimensions should be literal positive integers."
-                )
+                raise TypeError(f"{cls.__name__}[*dimensions]: dimensions should be literal positive integers.")
         return _AnnotatedAlias(cls, params)
 
     def __init_subclass__(cls) -> None:
@@ -261,7 +239,7 @@ class BinaryStruct:
         fields: dict[str, FieldInfo] = {}
         current_offset = 0
         dimensions: list[int]
-        db_type: DBType
+        db_type: DBType  # type: ignore[type-arg]
 
         for name, type_hint in hints.items():
             base_type = type_hint
@@ -271,9 +249,7 @@ class BinaryStruct:
                 base_type = type_hint.__origin__
                 if not isinstance(base_type, type):
                     continue
-                if not issubclass(base_type, DBType) and not issubclass(
-                    base_type, BinaryStruct
-                ):
+                if not issubclass(base_type, DBType) and not issubclass(base_type, BinaryStruct):
                     continue
 
                 for dimension in type_hint.__metadata__:
@@ -310,9 +286,7 @@ class BinaryStruct:
 
         cls._fields = fields
         cls._nb_bytes = current_offset
-        cls._struct_format = "".join(
-            field.db_type.struct_format for field in cls._fields.values()
-        )
+        cls._struct_format = "".join(field.db_type.struct_format for field in cls._fields.values())
 
     def read_field(self, field_name: str) -> Any:
         """Read a field from a buffer"""

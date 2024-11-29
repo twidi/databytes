@@ -2,7 +2,6 @@ import array
 import ctypes
 import io
 import mmap
-import os
 import pickle
 import tempfile
 from multiprocessing.shared_memory import SharedMemory
@@ -140,7 +139,7 @@ def test_invalid_list_buffer() -> None:
 
     struct = MainStruct(buffer)  # type: ignore[arg-type]
     with pytest.raises(TypeError):
-        struct.value == 1
+        struct.value = 1
 
 
 def test_too_small_buffer() -> None:
@@ -217,7 +216,7 @@ def test_invalid_pickle_buffer() -> None:
     buffer = pickle.PickleBuffer(bytearray(b"\x01" + b"Hello"))
 
     with pytest.raises(TypeError, match="has no len"):
-        struct = MainStruct(buffer)  # type: ignore[arg-type]
+        MainStruct(buffer)  # type: ignore[arg-type]
 
 
 def test_invalid_file_buffer() -> None:
@@ -229,12 +228,14 @@ def test_invalid_file_buffer() -> None:
 
         # Binary file mode
         with pytest.raises(TypeError):
-            struct = MainStruct(f)  # type: ignore[arg-type]
+            MainStruct(f)  # type: ignore[arg-type]
 
-        # Even in binary mode and reading the content, still not a buffer
+        # Reading the content is possible, though
         content = f.read()
+        struct = MainStruct(content)
+        assert struct.value == 1
         with pytest.raises(TypeError):
-            struct = MainStruct(f)  # type: ignore[arg-type]
+            struct.value = 2
 
 
 def test_freeing_buffer() -> None:

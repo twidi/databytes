@@ -35,9 +35,7 @@ def test_float64_field() -> None:
     expected_content = pack("<d", 3.141592653589793)
     expected_buffer = expected_content + t.NULL * (buffer_size - len(expected_content))
     assert buffer == expected_buffer
-    assert (
-        abs(data.single_value - 3.141592653589793) < 1e-15
-    )  # Float comparison with epsilon
+    assert abs(data.single_value - 3.141592653589793) < 1e-15  # Float comparison with epsilon
 
     # Test special values
     data.single_value = float("inf")
@@ -63,9 +61,7 @@ def test_float64_field() -> None:
 
     # Test float64 array
     data.value_array = [-3.141592653589793, 2.718281828459045, 1.414213562373095]
-    expected_content += pack(
-        "<3d", -3.141592653589793, 2.718281828459045, 1.414213562373095
-    )
+    expected_content += pack("<3d", -3.141592653589793, 2.718281828459045, 1.414213562373095)
     expected_buffer = expected_content + t.NULL * (buffer_size - len(expected_content))
     assert buffer == expected_buffer
     assert abs(data.value_array[0] - (-3.141592653589793)) < 1e-15

@@ -1,11 +1,10 @@
 from functools import partial
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 from mypy.nodes import TypeInfo
 from mypy.plugin import AnalyzeTypeContext, Plugin
-from mypy.types import AnyType, RawExpressionType
+from mypy.types import AnyType, RawExpressionType, TypeOfAny
 from mypy.types import Type as MypyType
-from mypy.types import TypeOfAny
 
 DBTYPES_TO_PYTHON = {
     # Explicit size integers
@@ -36,17 +35,10 @@ DBTYPES_TO_PYTHON = {
 
 
 class BinaryStructPlugin(Plugin):
-    def get_type_analyze_hook(
-        self, fullname: str
-    ) -> Optional[Callable[[AnalyzeTypeContext], MypyType]]:
-
+    def get_type_analyze_hook(self, fullname: str) -> Optional[Callable[[AnalyzeTypeContext], MypyType]]:
         if fullname.startswith("databytes.types."):
             db_type = fullname.split("databytes.types.")[1]
-            return (
-                partial(db_type_hook, db_type=db_type)
-                if db_type in DBTYPES_TO_PYTHON
-                else None
-            )
+            return partial(db_type_hook, db_type=db_type) if db_type in DBTYPES_TO_PYTHON else None
 
         if not fullname.startswith("builtins."):
             try:
@@ -58,10 +50,7 @@ class BinaryStructPlugin(Plugin):
                     real_type
                     and isinstance(real_type.node, TypeInfo)
                     and real_type.node.mro
-                    and any(
-                        parent_type.fullname == "databytes.BinaryStruct"
-                        for parent_type in real_type.node.mro[1:]
-                    )
+                    and any(parent_type.fullname == "databytes.BinaryStruct" for parent_type in real_type.node.mro[1:])
                 ):
                     return partial(substruct_hook, fullname=fullname)
 
@@ -93,7 +82,7 @@ def substruct_hook(ctx: AnalyzeTypeContext, fullname: str) -> MypyType:
         if not check_dimensions(ctx):
             return AnyType(TypeOfAny.from_error)
 
-        for dimension in ctx.type.args:
+        for _ in ctx.type.args:
             final_type = api.named_type("builtins.list", [final_type])
 
         return final_type
@@ -120,7 +109,7 @@ def db_type_hook(ctx: AnalyzeTypeContext, db_type: str) -> MypyType:
         # strings are already a list of chars
         nb_dimensions -= 1
 
-    for dimension in range(nb_dimensions):
+    for _ in range(nb_dimensions):
         python_type = api.named_type("builtins.list", [python_type])
 
     return python_type

@@ -14,9 +14,7 @@ def test_string_field() -> None:
         single_char: t.string  # Single character string
         fixed_str: t.string[5]  # Fixed-length string
         str_array: t.string[3, 2]  # Array of 2 strings of 3 chars
-        str_matrix: t.string[
-            2, 3, 2
-        ]  # Matrix of strings (2 rows of 3 strings of 2 chars)
+        str_matrix: t.string[2, 3, 2]  # Matrix of strings (2 rows of 3 strings of 2 chars)
 
     # Calculate buffer size: 1 + 5 + (3 * 2) + (2 * 3)
     buffer_size = (

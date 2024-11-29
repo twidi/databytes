@@ -1,5 +1,3 @@
-import pytest
-
 from databytes import BinaryStruct
 from databytes import types as t
 from databytes.utils import FieldLayoutInfo, StructLayoutInfo, get_layout_info
@@ -67,9 +65,7 @@ def get_expected_simple_sub_struct_layout_info(
     )
 
 
-def get_expected_complex_struct_layout_info(
-    base_offset: int = 0, with_subs: bool = False
-) -> StructLayoutInfo:
+def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: bool = False) -> StructLayoutInfo:
     return StructLayoutInfo(
         struct_class=ComplexStruct,
         name="ComplexStruct",
@@ -131,9 +127,7 @@ def get_expected_complex_struct_layout_info(
                 python_type=SimpleSubStruct,
                 python_full_type=SimpleSubStruct,
                 is_sub_struct=True,
-                sub_struct=(
-                    get_expected_simple_sub_struct_layout_info() if with_subs else None
-                ),
+                sub_struct=(get_expected_simple_sub_struct_layout_info() if with_subs else None),
             ),
             "sub_array": FieldLayoutInfo(
                 name="sub_array",
@@ -145,9 +139,7 @@ def get_expected_complex_struct_layout_info(
                 python_type=SimpleSubStruct,
                 python_full_type=list[SimpleSubStruct],
                 is_sub_struct=True,
-                sub_struct=(
-                    get_expected_simple_sub_struct_layout_info() if with_subs else None
-                ),
+                sub_struct=(get_expected_simple_sub_struct_layout_info() if with_subs else None),
             ),
             "sub_matrix": FieldLayoutInfo(
                 name="sub_matrix",
@@ -159,9 +151,7 @@ def get_expected_complex_struct_layout_info(
                 python_type=SimpleSubStruct,
                 python_full_type=list[list[SimpleSubStruct]],
                 is_sub_struct=True,
-                sub_struct=(
-                    get_expected_simple_sub_struct_layout_info() if with_subs else None
-                ),
+                sub_struct=(get_expected_simple_sub_struct_layout_info() if with_subs else None),
             ),
         },
     )
@@ -170,9 +160,7 @@ def get_expected_complex_struct_layout_info(
 def test_get_layout_info_for_class() -> None:
     """Test the get_layout_info function with a complex struct."""
     assert get_layout_info(ComplexStruct) == get_expected_complex_struct_layout_info()
-    assert get_layout_info(
-        ComplexStruct, True
-    ) == get_expected_complex_struct_layout_info(with_subs=True)
+    assert get_layout_info(ComplexStruct, True) == get_expected_complex_struct_layout_info(with_subs=True)
 
 
 def test_get_layout_info_for_instance() -> None:
@@ -180,9 +168,5 @@ def test_get_layout_info_for_instance() -> None:
     buffer = bytearray(ComplexStruct._nb_bytes + 10)
     instance = ComplexStruct(buffer, offset=10)
 
-    assert get_layout_info(instance) == get_expected_complex_struct_layout_info(
-        base_offset=10
-    )
-    assert get_layout_info(instance, True) == get_expected_complex_struct_layout_info(
-        base_offset=10, with_subs=True
-    )
+    assert get_layout_info(instance) == get_expected_complex_struct_layout_info(base_offset=10)
+    assert get_layout_info(instance, True) == get_expected_complex_struct_layout_info(base_offset=10, with_subs=True)

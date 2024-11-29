@@ -1,6 +1,3 @@
-import struct
-from struct import pack
-
 import pytest
 
 from databytes import BinaryStruct
@@ -108,12 +105,8 @@ def test_substruct_field() -> None:
             assert data.sub_array[i].nested_array[j].value == i * 10 + j
             assert data.sub_array[i].nested_array[j].flag is bool((i + j) % 2)
             for k in range(2):
-                assert (
-                    data.sub_array[i].nested_matrix[j][k].value == i * 100 + j * 10 + k
-                )
-                assert data.sub_array[i].nested_matrix[j][k].flag is bool(
-                    (i + j + k) % 2
-                )
+                assert data.sub_array[i].nested_matrix[j][k].value == i * 100 + j * 10 + k
+                assert data.sub_array[i].nested_matrix[j][k].flag is bool((i + j + k) % 2)
 
     # Test matrix of substructs
     for i in range(2):
@@ -125,13 +118,9 @@ def test_substruct_field() -> None:
             for k in range(2):
                 data.sub_matrix[i][j].nested_array[k].value = i * 100 + j * 10 + k
                 data.sub_matrix[i][j].nested_array[k].flag = bool((i + j + k) % 2)
-                for l in range(2):
-                    data.sub_matrix[i][j].nested_matrix[k][l].value = (
-                        i * 1000 + j * 100 + k * 10 + l
-                    )
-                    data.sub_matrix[i][j].nested_matrix[k][l].flag = bool(
-                        (i + j + k + l) % 2
-                    )
+                for l in range(2):  # noqa: E741
+                    data.sub_matrix[i][j].nested_matrix[k][l].value = i * 1000 + j * 100 + k * 10 + l
+                    data.sub_matrix[i][j].nested_matrix[k][l].flag = bool((i + j + k + l) % 2)
 
     # Verify matrix of substructs
     for i in range(2):
@@ -141,20 +130,11 @@ def test_substruct_field() -> None:
             assert data.sub_matrix[i][j].nested.value == i * 10 + j
             assert data.sub_matrix[i][j].nested.flag is bool((i + j) % 2)
             for k in range(2):
-                assert (
-                    data.sub_matrix[i][j].nested_array[k].value == i * 100 + j * 10 + k
-                )
-                assert data.sub_matrix[i][j].nested_array[k].flag is bool(
-                    (i + j + k) % 2
-                )
-                for l in range(2):
-                    assert (
-                        data.sub_matrix[i][j].nested_matrix[k][l].value
-                        == i * 1000 + j * 100 + k * 10 + l
-                    )
-                    assert data.sub_matrix[i][j].nested_matrix[k][l].flag is bool(
-                        (i + j + k + l) % 2
-                    )
+                assert data.sub_matrix[i][j].nested_array[k].value == i * 100 + j * 10 + k
+                assert data.sub_matrix[i][j].nested_array[k].flag is bool((i + j + k) % 2)
+                for l in range(2):  # noqa: E741
+                    assert data.sub_matrix[i][j].nested_matrix[k][l].value == i * 1000 + j * 100 + k * 10 + l
+                    assert data.sub_matrix[i][j].nested_matrix[k][l].flag is bool((i + j + k + l) % 2)
 
     # Test error handling
     with pytest.raises(ValueError):

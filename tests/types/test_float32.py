@@ -102,12 +102,7 @@ def test_float32_field() -> None:
     for i in range(3):
         for j in range(2):
             assert (
-                abs(
-                    data.value_matrix[i][j]
-                    - [-1.23456, 2.34567, -3.45678, 4.56789, -5.67890, 6.78901][
-                        i * 2 + j
-                    ]
-                )
+                abs(data.value_matrix[i][j] - [-1.23456, 2.34567, -3.45678, 4.56789, -5.67890, 6.78901][i * 2 + j])
                 < 1e-5
             )
 
@@ -146,11 +141,6 @@ def test_float32_field() -> None:
     for i in range(3):
         for j in range(2):
             assert (
-                abs(
-                    new_data.value_matrix[i][j]
-                    - [-1.23456, 2.34567, -3.45678, 4.56789, -5.67890, 6.78901][
-                        i * 2 + j
-                    ]
-                )
+                abs(new_data.value_matrix[i][j] - [-1.23456, 2.34567, -3.45678, 4.56789, -5.67890, 6.78901][i * 2 + j])
                 < 1e-5
             )

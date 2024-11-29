@@ -2,15 +2,12 @@ import array
 import builtins
 import ctypes
 import mmap
-import struct
 from functools import cached_property
 from math import prod
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     Any,
     Generic,
-    NamedTuple,
     TypeAlias,
     TypeVar,
     cast,
@@ -18,12 +15,9 @@ from typing import (
 )
 
 import numpy as np
-from typing_extensions import Buffer as TypedBuffer
 from typing_extensions import _AnnotatedAlias
 
-Buffer: TypeAlias = (
-    bytes | bytearray | memoryview | mmap.mmap | array.array | ctypes.Array | np.ndarray
-)
+Buffer: TypeAlias = bytes | bytearray | memoryview | mmap.mmap | array.array | ctypes.Array | np.ndarray  # type: ignore[type-arg]
 
 
 Dimensions: TypeAlias = tuple[int, ...]
@@ -72,9 +66,7 @@ class DBType(Generic[DBPythonType]):
             params = (params,)
         for param in params:
             if not isinstance(param, int) or param <= 0:
-                raise TypeError(
-                    f"{cls.__name__}[*dimensions]: dimensions should be literal positive integers."
-                )
+                raise TypeError(f"{cls.__name__}[*dimensions]: dimensions should be literal positive integers.")
         return _AnnotatedAlias(cls, params)
 
     def convert_first_dimension(self, data: bytes) -> DBPythonType:
@@ -90,9 +82,7 @@ class DBType(Generic[DBPythonType]):
             The converted value ready for struct.pack
         """
         if not isinstance(value, self.python_type):
-            raise TypeError(
-                f"Expected {self.python_type.__name__}, got {type(value).__name__}"
-            )
+            raise TypeError(f"Expected {self.python_type.__name__}, got {type(value).__name__}")
         return value
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -100,7 +90,9 @@ class DBType(Generic[DBPythonType]):
 
         # use `get_original_bases` in python 3.12
         generic_bases = [
-            base for base in cls.__orig_bases__ if hasattr(base, "__origin__")  # type: ignore[attr-defined]
+            base
+            for base in cls.__orig_bases__  # type: ignore[attr-defined]
+            if hasattr(base, "__origin__")
         ]
         # Get the actual type argument (DBPythonType) from the first generic base
         cls.python_type = get_args(generic_bases[0])[0]
@@ -211,9 +203,7 @@ class char(DBType[builtins.bytes]):
             raise TypeError(f"Expected bytes, got {type(value).__name__}")
 
         if len(value) != 1:
-            raise ValueError(
-                f"Bytes value must be exactly 1 byte long, got {len(value)}"
-            )
+            raise ValueError(f"Bytes value must be exactly 1 byte long, got {len(value)}")
 
         return value
 
@@ -251,9 +241,7 @@ class string(DBType[builtins.str]):
 
         encoded = value.encode()
         if len(encoded) > self.dimensions[0]:
-            raise ValueError(
-                f"String is too long ({len(encoded)} bytes), maximum is {self.dimensions[0]} bytes"
-            )
+            raise ValueError(f"String is too long ({len(encoded)} bytes), maximum is {self.dimensions[0]} bytes")
 
         # Only pad with nulls, no truncation
         return encoded.ljust(self.dimensions[0], b"\x00")
@@ -266,9 +254,7 @@ DBSubStructPythonType = TypeVar("DBSubStructPythonType", bound="BinaryStruct")
 
 
 class SubStruct(DBType[DBSubStructPythonType]):
-    def __init__(
-        self, python_type: type[DBSubStructPythonType], dimensions: Dimensions = ()
-    ) -> None:
+    def __init__(self, python_type: type[DBSubStructPythonType], dimensions: Dimensions = ()) -> None:
         super().__init__(dimensions)
         self.python_type = python_type
         self.single_nb_bytes = python_type._nb_bytes

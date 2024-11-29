@@ -93,9 +93,7 @@ def test_int32_field() -> None:
 
     # Test int32 matrix
     data.value_matrix = [[-100_000, 200_000], [-300_000, 400_000], [-500_000, 600_000]]
-    expected_content += pack(
-        "<6i", -100_000, 200_000, -300_000, 400_000, -500_000, 600_000
-    )
+    expected_content += pack("<6i", -100_000, 200_000, -300_000, 400_000, -500_000, 600_000)
     expected_buffer = expected_content + t.NULL * (buffer_size - len(expected_content))
     assert buffer == expected_buffer
     assert data.value_matrix[0] == [-100_000, 200_000]
