@@ -18,9 +18,10 @@ from typing import (
 
 from typing_extensions import _AnnotatedAlias
 
-from .types import Buffer, DBType, Dimensions, SubStruct, string
+from .types import Buffer, DBType, Dimensions, Endianness, SubStruct, string
 
 T = TypeVar("T")
+BT = TypeVar("BT", bound="BinaryStruct")
 
 RecursiveArray: TypeAlias = Union[list[T], list["RecursiveArray[T]"]]
 BinaryStructOrRecursiveArrayOf: TypeAlias = "BinaryStruct" | RecursiveArray["BinaryStructOrRecursiveArrayOf"]
@@ -161,6 +162,7 @@ class FieldDescriptor:
 class BinaryStruct:
     """Base class for binary structures"""
 
+    _endianness: ClassVar[Endianness] = Endianness.get_default()
     _fields: ClassVar[dict[str, FieldInfo]] = {}
     _nb_bytes: ClassVar[int] = 0
     _struct_format: ClassVar[str] = ""
@@ -206,13 +208,21 @@ class BinaryStruct:
 
     def _create_sub_instances(self) -> None:
         """Create sub-instances for all sub-struct fields."""
+
+        def create_struct(struct_class: type[BT], offset: int) -> BT:
+            if struct_class._endianness != self._endianness:
+                raise ValueError(
+                    f"Sub-struct {struct_class.__name__} must have same endianness as parent: {self._endianness.name}"
+                )
+            return struct_class(self._buffer, offset=offset)
+
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
                 continue
 
             if not field.is_array:
                 # if not an array, it's a single struct
-                struct = field.db_type.python_type(self._buffer, offset=self._offset + field.offset)
+                struct = create_struct(field.db_type.python_type, self._offset + field.offset)
                 setattr(self, field.name, struct)
                 continue
 
@@ -220,7 +230,7 @@ class BinaryStruct:
             items = []
             for index in range(field.nb_items):
                 offset = self._offset + field.offset + (index * field.db_type.single_nb_bytes)
-                struct = field.db_type.python_type(self._buffer, offset=offset)
+                struct = create_struct(field.db_type.python_type, offset)
                 items.append(struct)
 
             setattr(self, field.name, field._reshape_array(items, field.dimensions))
@@ -272,6 +282,11 @@ class BinaryStruct:
                 continue
             if issubclass(base_type, BinaryStruct):
                 # Handle nested struct fields
+                if base_type._endianness != cls._endianness:
+                    raise ValueError(
+                        f"Sub-struct {base_type.__name__} must have same endianness as parent: {cls._endianness.name}"
+                    )
+
                 db_type = SubStruct(python_type=base_type, dimensions=tuple(dimensions))
             elif not issubclass(base_type, DBType):
                 continue
@@ -280,7 +295,7 @@ class BinaryStruct:
 
             fields[name] = FieldInfo(
                 name=name,
-                raw_struct=Struct(format := f"<{db_type.struct_format}"),
+                raw_struct=Struct(format := f"{cls._endianness}{db_type.struct_format}"),
                 offset=current_offset,
                 nb_bytes=db_type.nb_bytes,
                 db_type=db_type,

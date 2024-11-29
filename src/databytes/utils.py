@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from math import prod
-from typing import TYPE_CHECKING, NamedTuple, TypeAlias, Union
+from typing import TYPE_CHECKING, Literal, NamedTuple, TypeAlias, Union
 
 from . import BinaryStruct
-from .types import Dimensions, SubStruct
+from .types import Dimensions, Endianness, SubStruct
 
 if TYPE_CHECKING:
     from rich.group import Group, Table  # type: ignore[import-not-found]
@@ -29,6 +29,8 @@ FieldsLayoutInfo: TypeAlias = dict[str, FieldLayoutInfo]
 class StructLayoutInfo(NamedTuple):
     name: str
     struct_class: type
+    endianness: Endianness
+    byte_order: Literal[Endianness.LITTLE, Endianness.BIG]
     struct_format: str
     nb_bytes: int
     offset: int
@@ -84,8 +86,10 @@ def get_layout_info(
         )
 
     return StructLayoutInfo(
-        struct_class=struct_class,
         name=struct_class.__name__,
+        struct_class=struct_class,
+        endianness=struct_or_class._endianness,
+        byte_order=struct_or_class._endianness.byte_order,
         struct_format=struct_or_class._struct_format,
         nb_bytes=struct_or_class._nb_bytes,
         offset=base_offset,

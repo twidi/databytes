@@ -286,6 +286,7 @@ To not pollute the namespace, extra fields are prefixed with `_`:
 
 - `_nb_bytes` (class var): number of bytes used by the structure (including sub-structs)
 - `_struct_format` (class var): the format, using the python `struct` module format, of the whole structure (just for information)
+- `_endianness` (class var): the endianness of the structure (see below for more details)
 - `_buffer` (instance var): the buffer used by the structure (the buffer passed to the constructor, will be the same for the main struct and all sub-structs)
 - `_offset` (instance var): the offset of this specific structure in the buffer
 
@@ -303,6 +304,52 @@ class Data(BinaryStruct):
         super().__init__(buffer, offset)
         self.my_field = my_field
 ```
+
+### Endianness
+
+The endianness is defined in the `BinaryStruct` class var `_endianness`. It defaults to the system default. You can get the default value using:
+
+```python
+from databytes import BinaryStruct
+
+print(BinaryStruct._endianness.name)  # by default it will always be `NATIVE`
+print(BinaryStruct._endianness.byte_order)  # will be `BIG` or `LITTLE` depending on the system default
+```
+
+You can change the default endianness using the `DATABYTES_ENDIANNESS` environment variable, setting it to `LITTLE`, `BIG`, `NETWORK` (alias for `BIG`) or `NATIVE` (the actual default).
+
+The `_endianness` of a struct, is an entry of the `Endianness` enum defined in `databytes.types`. You access them via `Endianness.NATIVE`, `Endianness.LITTLE`, `Endianness.BIG` or `Endianness.NETWORK`. The value are the ones used by the python `struct` module.
+Those enums have a `byte_order` property that will always resolve to the effective byte order, i.e. `Endianness.LITTLE` or `Endianness.BIG`.
+
+You can change the endianness of a struct by setting the `_endianness` class var:
+
+```python
+from databytes import BinaryStruct
+from databytes import types as t
+
+class Data(BinaryStruct):
+    _endianness = Endianness.LITTLE
+    field: t.uint16
+```
+
+This `Data` struct will be read/written in little endian.
+
+If you set the `_endianness` of a struct, all sub-structs must be defined with the same endianness.
+
+```python
+from databytes import BinaryStruct
+from databytes import types as t
+
+class ChildData(BinaryStruct):
+    _endianness = Endianness.LITTLE
+    field: t.uint16
+
+class Data(BinaryStruct):
+    _endianness = Endianness.LITTLE
+    field: t.uint16
+    child: ChildData
+```
+
 
 ### Pointing to another buffer
 
@@ -388,6 +435,8 @@ Will give you:
 StructLayoutInfo(
     name='Rectangle', 
     struct_class=<class '__main__.Rectangle'>, 
+    endianness=<Endianness.NATIVE: '='>, 
+    byte_order=<Endianness.LITTLE: '<'>,
     struct_format='HHHH', 
     nb_bytes=8, 
     offset=0, 
@@ -413,6 +462,8 @@ Call it with `include_sub_structs_details=True` to get more details about the su
 StructLayoutInfo(
     name='Rectangle', 
     struct_class=<class '__main__.Rectangle'>
+    endianness=<Endianness.NATIVE: '='>, 
+    byte_order=<Endianness.LITTLE: '<'>,
     struct_format='HHHH'
     nb_bytes=8
     offset=0
@@ -430,6 +481,8 @@ StructLayoutInfo(
             sub_struct=StructLayoutInfo(
                 name='Point', 
                 struct_class=<class '__main__.Point'>, 
+                endianness=<Endianness.NATIVE: '='>, 
+                byte_order=<Endianness.LITTLE: '<'>,
                 struct_format='HH'
                 nb_bytes=4
                 offset=0

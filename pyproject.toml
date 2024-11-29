@@ -59,6 +59,7 @@ dev = [
     "mypy",
     "pytest",
     "pytest-cov",
+    "pytest-env",
     "pytest-sugar",
     "twine",
     "uv",
@@ -125,7 +126,10 @@ ignore = [
 
 
 [tool.pytest.ini_options]
-addopts = ["--cov=databytes", "--cov-report", "term-missing:skip-covered", "--ignore", "setup.py", "--ignore", "docs", "--ignore", "ci", "--pyargs"]
+addopts = ["--cov=src/databytes", "--cov-report", "term-missing:skip-covered", "--ignore", "setup.py", "--ignore", "docs", "--ignore", "ci", "--pyargs"]
+
+[tool.pytest_env]
+DATABYTES_ENDIANNESS = "LITTLE"
 
 [tool.coverage.run]
 branch = true

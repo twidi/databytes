@@ -1,18 +1,15 @@
+from __future__ import annotations
+
 import array
 import builtins
 import ctypes
+import enum
 import mmap
+import os
+import sys
 from functools import cached_property
 from math import prod
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Generic,
-    TypeAlias,
-    TypeVar,
-    cast,
-    get_args,
-)
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypeVar, cast, get_args
 
 import numpy as np
 from typing_extensions import _AnnotatedAlias
@@ -25,6 +22,33 @@ Dimensions: TypeAlias = tuple[int, ...]
 DBPythonType = TypeVar("DBPythonType")
 
 NULL = b"\0"
+
+
+class Endianness(str, enum.Enum):
+    NATIVE = "="
+    LITTLE = "<"
+    BIG = ">"
+    NETWORK = "!"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @property
+    def byte_order(self) -> Literal[Endianness.LITTLE, Endianness.BIG]:
+        if self == Endianness.NATIVE:
+            return Endianness.LITTLE if sys.byteorder == "little" else Endianness.BIG
+        if self == Endianness.LITTLE:
+            return Endianness.LITTLE
+        return Endianness.BIG
+
+    @classmethod
+    def get_default(cls) -> Endianness:
+        try:
+            return cls[os.environ.get("DATABYTES_ENDIANNESS", "") or cls.NATIVE.name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Invalid DATABYTES_ENDIANNESS environment variable value: {os.environ['DATABYTES_ENDIANNESS']}"
+            ) from exc
 
 
 class DBType(Generic[DBPythonType]):

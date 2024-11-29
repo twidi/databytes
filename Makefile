@@ -1,6 +1,7 @@
 PROJECT_NAME := $(shell python setup.py --name)
 PROJECT_VERSION := $(shell python setup.py --version)
 SOURCE_ROOT := "src/$(PROJECT_NAME)"
+TESTS_ROOT := "tests"
 
 BOLD := \033[1m
 RESET := \033[0m
@@ -88,21 +89,21 @@ checks: lint tests
 .PHONY: mypy
 mypy:  ## Run the mypy tool
 	@echo "$(BOLD)Running mypy$(RESET)"
-	@mypy $(SOURCE_ROOT)
+	@mypy $(SOURCE_ROOT) $(TESTS_ROOT)
 
 .PHONY: ruff-check
 ruff-check:  ## Run the ruff tool in check mode
 	@echo "$(BOLD)Running ruff check$(RESET)"
-	@ruff check $(SOURCE_ROOT)
-	@ruff check --select I $(SOURCE_ROOT)
-	@ruff format --check $(SOURCE_ROOT)
+	@ruff check $(SOURCE_ROOT) $(TESTS_ROOT)
+	@ruff check --select I $(SOURCE_ROOT) $(TESTS_ROOT)
+	@ruff format --check $(SOURCE_ROOT) $(TESTS_ROOT)
 
 .PHONY: ruff-fix
 ruff-fix:  ## Run the ruff tool in fix mode
 	@echo "$(BOLD)Running ruff format$(RESET) in fix only mode"
-	@ruff check --select I --fix $(SOURCE_ROOT)
-	@ruff check --fix --exit-zero $(SOURCE_ROOT)
-	@ruff format $(SOURCE_ROOT)
+	@ruff check --select I --fix $(SOURCE_ROOT) $(TESTS_ROOT)
+	@ruff check --fix --exit-zero $(SOURCE_ROOT) $(TESTS_ROOT)
+	@ruff format $(SOURCE_ROOT) $(TESTS_ROOT)
 
 .PHONY: pretty format
 pretty / format:  ## Run all code beautifiers (ruff-fix)

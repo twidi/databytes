@@ -1,6 +1,6 @@
 from databytes import BinaryStruct
 from databytes import types as t
-from databytes.utils import FieldLayoutInfo, StructLayoutInfo, get_layout_info
+from databytes.utils import Endianness, FieldLayoutInfo, StructLayoutInfo, get_layout_info
 
 
 class SimpleSubStruct(BinaryStruct):
@@ -33,8 +33,10 @@ def get_expected_simple_sub_struct_layout_info(
     base_offset: int = 0,
 ) -> StructLayoutInfo:
     return StructLayoutInfo(
-        struct_class=SimpleSubStruct,
         name="SimpleSubStruct",
+        struct_class=SimpleSubStruct,
+        endianness=Endianness.LITTLE,
+        byte_order=Endianness.LITTLE,
         struct_format="BH",
         nb_bytes=3,
         offset=base_offset,
@@ -67,8 +69,10 @@ def get_expected_simple_sub_struct_layout_info(
 
 def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: bool = False) -> StructLayoutInfo:
     return StructLayoutInfo(
-        struct_class=ComplexStruct,
         name="ComplexStruct",
+        struct_class=ComplexStruct,
+        endianness=Endianness.LITTLE,
+        byte_order=Endianness.LITTLE,
         struct_format="I10s3H6fBHBHBHBHBHBHBHBHBH",
         nb_bytes=71,
         offset=base_offset,

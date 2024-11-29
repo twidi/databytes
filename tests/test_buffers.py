@@ -285,7 +285,7 @@ def test_buffer_offset() -> None:
     assert buffer == t.NULL * 10 + b"\x01\x02\x03" + t.NULL * 7
 
     buffer2 = t.NULL * 5 + b"\x04\x05\x06" + t.NULL * 2
-    
+
     struct.attach_buffer(buffer2, 5)
     assert struct.value == 4
     assert struct.child.children[0].value == 5
