@@ -260,3 +260,33 @@ def test_freeing_buffer() -> None:
     assert struct.child._buffer is None  # type: ignore[unreachable]  # because it cannot be None "in theory"
     assert struct.child.children[0]._buffer is None
     assert struct.child.children[1]._buffer is None
+
+
+def test_buffer_offset() -> None:
+    # Test settings a buffer with an offset, and attaching another one
+
+    class ChildStruct(BinaryStruct):
+        value: t.uint8
+
+    class ParentStruct(BinaryStruct):
+        children: ChildStruct[2]
+
+    class GrandParentStruct(BinaryStruct):
+        value: t.uint8
+        child: ParentStruct
+
+    buffer = bytearray(20)
+    struct = GrandParentStruct(buffer, 10)
+    struct.value = 1
+    struct.child.children[0].value = 2
+    struct.child.children[1].value = 3
+
+    assert struct._nb_bytes == 3
+    assert buffer == t.NULL * 10 + b"\x01\x02\x03" + t.NULL * 7
+
+    buffer2 = t.NULL * 5 + b"\x04\x05\x06" + t.NULL * 2
+    
+    struct.attach_buffer(buffer2, 5)
+    assert struct.value == 4
+    assert struct.child.children[0].value == 5
+    assert struct.child.children[1].value == 6

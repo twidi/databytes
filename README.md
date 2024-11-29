@@ -317,12 +317,17 @@ class Data(BinaryStruct):
 
 buffer1 = bytearray(1000)
 buffer2 = bytearray(1000)
+buffer3 = bytearray(1000)
 
 # will read/write the data at offset 100 of the buffer1
 data = Data(buffer1, 100)
 
-# will now read/write the data at offset 100 of the buffer2 (it's not possible to change the offset for now)
-data.set_new_buffer(buffer2)
+# will now read/write the data at offset 100 of the buffer2
+data.attach_buffer(buffer2)
+
+# will now read/write the data at offset 50 of the buffer3
+data.attach_buffer(buffer3, 50)
+
 ```
 
 ### Freeing the buffer
@@ -354,7 +359,7 @@ finally:
     shm.unlink()
 ``` 
 
-Of course, here `data` cannot be used anymore unless you call `set_new_buffer` on it with another buffer.
+Of course, here `data` cannot be used anymore unless you call `attach_buffer` on it with another buffer.
 
 ### Utils
 

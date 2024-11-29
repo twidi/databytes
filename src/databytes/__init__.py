@@ -173,18 +173,16 @@ class BinaryStruct:
         self._offset = offset
         self.create_sub_instances()
 
-    def set_new_buffer(self, buffer: Buffer) -> None:
-        """Set the buffer for this struct and update all sub-structs."""
-        if len(buffer) < self._nb_bytes:
-            raise ValueError(f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}")
+    def _attach_buffer(self, buffer: Buffer, delta_offset: int) -> None:
         self._buffer = buffer
+        self._offset += delta_offset
 
         def update_buffers(structs: BinaryStructOrRecursiveArrayOf) -> None:
             if isinstance(structs, list):
                 for struct in structs:
                     update_buffers(struct)
             elif isinstance(structs, BinaryStruct):
-                structs.set_new_buffer(buffer)
+                structs._attach_buffer(buffer, delta_offset)
 
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
@@ -194,6 +192,17 @@ class BinaryStruct:
                 struct = getattr(self, field.name)
                 if struct is not None:
                     update_buffers(struct)
+
+    def attach_buffer(self, buffer: Buffer, offset: int | None = None) -> None:
+        """Set the buffer for this struct and update all sub-structs."""
+        if len(buffer) < self._nb_bytes:
+            raise ValueError(f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}")
+        delta_offset = offset - self._offset if offset is not None else 0
+        self._attach_buffer(buffer, delta_offset)
+
+    def set_new_buffer(self, buffer: Buffer) -> None:
+        # kept for backward compatibility
+        self.attach_buffer(buffer)
 
     def create_sub_instances(self) -> None:
         """Create sub-instances for all sub-struct fields."""
