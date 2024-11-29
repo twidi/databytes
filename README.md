@@ -176,14 +176,14 @@ class Point(BinaryStruct):
 
 class Rectangle(BinaryStruct):
     corners: Point[2]  # array of 2 points
-    matrix_2dim: Point[2, 3]  # matrix of 2x2 points
-    matrix_3dim: Point[2, 3, 4]  # matrix of 2x2x2 points
+    matrix_2dim: Point[2, 3]  # matrix of 3x2 points
+    matrix_3dim: Point[2, 3, 4]  # matrix of 4x3x2 points
     
 ```
 
 *WARNING*: The dimensions are defined in reverse order: `Point[2, 3, 4]` is a list of 4 lists of 3 lists of 2 points
 
-*WARNING*: It's actually not possible to set the arrays instances directly without using the concrete slicing and attributes. It's due to the fact that the sub-structs instances are tied to their parent buffer, with the correct offset.
+*WARNING*: It's actually not possible to set the arrays instances directly without using concrete slicing and attributes. It's due to the fact that the sub-structs instances are tied to their parent buffer, with the correct offset.
 
 ```python
 class Point(BinaryStruct):
