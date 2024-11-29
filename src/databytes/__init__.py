@@ -143,7 +143,7 @@ class FieldDescriptor:
         if instance is None:
             return self
 
-        return instance.read_field(self.field_name)
+        return instance._read_field(self.field_name)
 
     def __set__(self, instance: BinaryStruct, value: Any) -> None:
         """Set the field value by writing to the buffer.
@@ -155,7 +155,7 @@ class FieldDescriptor:
         if instance is None:
             return  # type: ignore[unreachable]
 
-        instance.write_field(self.field_name, value)
+        instance._write_field(self.field_name, value)
 
 
 class BinaryStruct:
@@ -171,7 +171,7 @@ class BinaryStruct:
             raise ValueError(f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}")
         self._buffer: Buffer = buffer
         self._offset = offset
-        self.create_sub_instances()
+        self._create_sub_instances()
 
     def _attach_buffer(self, buffer: Buffer, delta_offset: int) -> None:
         self._buffer = buffer
@@ -204,7 +204,7 @@ class BinaryStruct:
         # kept for backward compatibility
         self.attach_buffer(buffer)
 
-    def create_sub_instances(self) -> None:
+    def _create_sub_instances(self) -> None:
         """Create sub-instances for all sub-struct fields."""
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
@@ -297,13 +297,13 @@ class BinaryStruct:
         cls._nb_bytes = current_offset
         cls._struct_format = "".join(field.db_type.struct_format for field in cls._fields.values())
 
-    def read_field(self, field_name: str) -> Any:
+    def _read_field(self, field_name: str) -> Any:
         """Read a field from a buffer"""
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
         return self._fields[field_name].read_from_buffer(self._buffer, self._offset)
 
-    def write_field(self, field_name: str, value: Any) -> None:
+    def _write_field(self, field_name: str, value: Any) -> None:
         """Write a field to a buffer"""
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
