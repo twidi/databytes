@@ -32,6 +32,11 @@ build: clean
 	@echo "$(BOLD)Building package$(RESET)"
 	@python -m build
 
+.PHONY: upload
+upload:  ## Upload the package to PyPI
+	@echo "$(BOLD)Uploading package to PyPI$(RESET)"
+	@python -m twine upload dist/*
+
 .PHONY: clean
 clean:  ## Clean python build related directories and files
 	@echo "$(BOLD)Cleaning$(RESET)"
