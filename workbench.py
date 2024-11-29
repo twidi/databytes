@@ -7,6 +7,7 @@ from multiprocessing.shared_memory import SharedMemory
 
 from databytes import BinaryStruct
 from databytes import types as t
+from databytes.utils import print_rich_table
 
 
 class MySubSubStruct(BinaryStruct):
@@ -129,9 +130,7 @@ def test_bytes(test_data: bytes) -> None:
 
 if __name__ == "__main__":
     # Print the structure layout
-    MyStruct.print_layout()
-    MySubStruct.print_layout()
-    MySubSubStruct.print_layout()
+    print_rich_table(MyStruct, True)
 
     # Create sample data
     test_data = (

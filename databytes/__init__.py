@@ -16,8 +16,6 @@ from typing import (
     get_type_hints,
 )
 
-from rich.console import Console
-from rich.table import Table
 from typing_extensions import _AnnotatedAlias
 
 from .types import Buffer, DBType, Dimensions, SubStruct, string
@@ -330,49 +328,6 @@ class BinaryStruct:
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
         self._fields[field_name].write_to_buffer(self._buffer, self._offset, value)
-
-    @classmethod
-    def print_layout(cls) -> None:
-        """Get a string representation of the structure layout"""
-        table = Table(title=f"Layout of {cls.__name__}")
-
-        # Add columns
-        table.add_column("Field Name", style="cyan")
-        table.add_column("Offset", justify="right", style="magenta")
-        table.add_column("Size", justify="right", style="green")
-        table.add_column("Format", style="yellow")
-        table.add_column("Dimensions", justify="right", style="blue")
-        table.add_column("Python Type", style="cyan")
-
-        # Add rows
-        for name, field in cls._fields.items():
-            dimensions = str(field.dimensions) if field.dimensions else "-"
-            python_type = field.db_type.python_type.__name__
-            if field.dimensions:
-                nb_dimensions = len(field.dimensions)
-                if field.db_type.collapse_first_dimension:
-                    nb_dimensions -= 1
-                python_type = (
-                    ("list\[" * nb_dimensions) + python_type + ("]" * nb_dimensions)
-                )
-            table.add_row(
-                name,
-                str(field.offset),
-                str(field.nb_bytes),
-                field.db_type.struct_format,
-                dimensions,
-                python_type,
-            )
-
-        # Add total size row
-        table.add_section()
-        table.add_row(
-            "Total Size", "-", str(cls._nb_bytes), "-", "-", "-", style="bold"
-        )
-
-        # Render to string
-        console = Console(record=True)
-        console.print(table)
 
     def free_buffer(self) -> None:
         self._buffer = None  # type: ignore[assignment]
