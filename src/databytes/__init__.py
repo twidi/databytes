@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from multiprocessing.shared_memory import SharedMemory
-from struct import Struct
+from struct import Struct, pack_into, unpack_from
 from struct import error as StructError
 from typing import (
     Any,
@@ -210,6 +210,20 @@ class BinaryStruct:
     def set_new_buffer(self, buffer: Buffer) -> None:
         # kept for backward compatibility
         self.attach_buffer(buffer)
+
+    def get_raw_content(self) -> tuple[Any, ...]:
+        return unpack_from(f"{self._endianness}{self._struct_format}", self._buffer, self._offset)  # type: ignore[arg-type]
+
+    def set_raw_content(self, content: tuple[Any, ...]) -> None:
+        try:
+            pack_into(f"{self._endianness}{self._struct_format}", self._buffer, self._offset, *content)  # type: ignore[arg-type]
+        except StructError as e:
+            raise ValueError("Failed to fill content into buffer") from e
+
+    def fill_from(self: BT, other: BT) -> None:
+        if not isinstance(other, self.__class__):
+            raise ValueError(f"Cannot fill {self.__class__.__name__} from {other.__class__.__name__}")
+        self.set_raw_content(other.get_raw_content())
 
     def _create_sub_instances(self) -> None:
         """Create sub-instances for all sub-struct fields."""

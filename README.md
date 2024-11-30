@@ -409,6 +409,53 @@ data.attach_buffer(buffer3, 50)
 
 ```
 
+
+### Copying from another structure
+
+You can copy a full struct (or a sub-struct) from another one using the `fill_from` method:
+
+```python
+from databytes import BinaryStruct
+from databytes import types as t
+
+class Child(BinaryStruct):
+    field1: t.uint16
+    field2: t.string[5]
+
+class Data(BinaryStruct):
+    field: t.uint16
+    children: Child[2]
+
+buffer1 = bytearray(1000)
+
+data1 = Data(buffer1)
+data1.field = 1
+data1.children[0].field1 = 2
+data1.children[0].field2 = "Hello"
+data1.children[1].field1 = 3
+data1.children[1].field2 = "World"
+
+# you can copy the whole struct
+buffer2 = bytearray(1000)
+data2 = Data(buffer2)
+data2.fill_from(data1)
+
+assert data2.field == 1
+assert data2.children[0].field1 == 2
+assert data2.children[0].field2 == "Hello"
+assert data2.children[1].field1 == 3
+assert data2.children[1].field2 == "World"
+
+# or a sub-struct
+buffer3 = bytearray(1000)
+data3 = Data(buffer3)
+data3.children[1].fill_from(data1.children[0])
+
+assert data3.children[1].field1 == 2
+assert data3.children[1].field2 == "Hello"
+
+```
+
 ### Freeing the buffer
 
 When using shared memory for example, the buffer must be freed before freeing the shared memory. To do that, use the `free_buffer` method:
