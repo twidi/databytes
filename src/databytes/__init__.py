@@ -32,13 +32,16 @@ class FieldInfo:
     """Information about a field in the binary structure"""
 
     name: str
-    raw_struct: Struct  # better to use unpack_from from struct instance because format is pre-compiled
     offset: int
     nb_bytes: int
     db_type: DBType  # type: ignore[type-arg]
     format: str
     dimensions: Dimensions = ()
     sub: Optional[BinaryStructOrRecursiveArrayOf] = None
+
+    def __post_init__(self) -> None:
+        # # we'll use unpack_from and pack_into from a struct instance because format is pre-compiled
+        self.raw_structs = {endianness: Struct(f"{endianness}{self.format}") for endianness in Endianness}
 
     @cached_property
     def is_array(self) -> bool:
@@ -70,8 +73,8 @@ class FieldInfo:
             current = [current[i : i + chunk_size] for i in range(0, len(current), chunk_size)]
         return current
 
-    def read_from_buffer(self, buffer: Buffer, instance_offset: int) -> Any:
-        values = self.raw_struct.unpack_from(buffer, instance_offset + self.offset)  # type: ignore[arg-type]
+    def read_from_buffer(self, buffer: Buffer, instance_offset: int, endianness: Endianness) -> Any:
+        values = self.raw_structs[endianness].unpack_from(buffer, instance_offset + self.offset)  # type: ignore[arg-type]
         if self.is_array:
             # Special case for char arrays: convert to string
             if self.db_type.collapse_first_dimension:
@@ -89,7 +92,7 @@ class FieldInfo:
         # Single value
         return values[0]
 
-    def write_to_buffer(self, buffer: Buffer, instance_offset: int, value: Any) -> None:
+    def write_to_buffer(self, buffer: Buffer, instance_offset: int, endianness: Endianness, value: Any) -> None:
         """Write a value to the buffer at the field's offset.
 
         Args:
@@ -125,7 +128,7 @@ class FieldInfo:
 
         # Pack values into buffer
         try:
-            self.raw_struct.pack_into(buffer, instance_offset + self.offset, *values)  # type: ignore[arg-type]
+            self.raw_structs[endianness].pack_into(buffer, instance_offset + self.offset, *values)  # type: ignore[arg-type]
         except StructError as e:
             raise ValueError(f"Failed to pack value(s) {values} into buffer") from e
 
@@ -162,17 +165,19 @@ class FieldDescriptor:
 class BinaryStruct:
     """Base class for binary structures"""
 
-    _endianness: ClassVar[Endianness] = Endianness.get_default()
+    _endianness: Endianness = Endianness.get_default()
     _fields: ClassVar[dict[str, FieldInfo]] = {}
     _nb_bytes: ClassVar[int] = 0
     _struct_format: ClassVar[str] = ""
 
-    def __init__(self, buffer: Buffer, offset: int = 0) -> None:
+    def __init__(self, buffer: Buffer, offset: int = 0, endianness: Endianness | None = None) -> None:
         """Initialize with a buffer and its offset from parent buffer"""
         if len(buffer) < self._nb_bytes:
             raise ValueError(f"Buffer too small: got {len(buffer)} bytes, need {self._nb_bytes}")
         self._buffer: Buffer = buffer
         self._offset = offset
+        if endianness is not None:
+            self._endianness = endianness
         self._create_sub_instances()
 
     def _attach_buffer(self, buffer: Buffer, delta_offset: int) -> None:
@@ -210,11 +215,7 @@ class BinaryStruct:
         """Create sub-instances for all sub-struct fields."""
 
         def create_struct(struct_class: type[BT], offset: int) -> BT:
-            if struct_class._endianness != self._endianness:
-                raise ValueError(
-                    f"Sub-struct {struct_class.__name__} must have same endianness as parent: {self._endianness.name}"
-                )
-            return struct_class(self._buffer, offset=offset)
+            return struct_class(self._buffer, offset=offset, endianness=self._endianness)
 
         for field in self._fields.values():
             if not isinstance(field.db_type, SubStruct):
@@ -282,11 +283,6 @@ class BinaryStruct:
                 continue
             if issubclass(base_type, BinaryStruct):
                 # Handle nested struct fields
-                if base_type._endianness != cls._endianness:
-                    raise ValueError(
-                        f"Sub-struct {base_type.__name__} must have same endianness as parent: {cls._endianness.name}"
-                    )
-
                 db_type = SubStruct(python_type=base_type, dimensions=tuple(dimensions))
             elif not issubclass(base_type, DBType):
                 continue
@@ -295,11 +291,10 @@ class BinaryStruct:
 
             fields[name] = FieldInfo(
                 name=name,
-                raw_struct=Struct(format := f"{cls._endianness}{db_type.struct_format}"),
                 offset=current_offset,
                 nb_bytes=db_type.nb_bytes,
                 db_type=db_type,
-                format=format if db_type.struct_format else "struct",
+                format=db_type.struct_format,
                 dimensions=db_type.dimensions,
             )
             # Create descriptor for the field
@@ -316,13 +311,13 @@ class BinaryStruct:
         """Read a field from a buffer"""
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
-        return self._fields[field_name].read_from_buffer(self._buffer, self._offset)
+        return self._fields[field_name].read_from_buffer(self._buffer, self._offset, self._endianness)
 
     def _write_field(self, field_name: str, value: Any) -> None:
         """Write a field to a buffer"""
         if field_name not in (self._fields or {}):
             raise ValueError(f"Unknown field {field_name}")
-        self._fields[field_name].write_to_buffer(self._buffer, self._offset, value)
+        self._fields[field_name].write_to_buffer(self._buffer, self._offset, self._endianness, value)
 
     def free_buffer(self) -> None:
         self._buffer = None  # type: ignore[assignment]

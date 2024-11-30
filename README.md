@@ -307,47 +307,74 @@ class Data(BinaryStruct):
 
 ### Endianness
 
-The endianness is defined in the `BinaryStruct` class var `_endianness`. It defaults to the system default. You can get the default value using:
+The endianess of a struct can be defined in two ways:
+
+- When defining the class by setting the `_endianness` class var:
 
 ```python
 from databytes import BinaryStruct
-
-print(BinaryStruct._endianness.name)  # by default it will always be `NATIVE`
-print(BinaryStruct._endianness.byte_order)  # will be `BIG` or `LITTLE` depending on the system default
-```
-
-You can change the default endianness using the `DATABYTES_ENDIANNESS` environment variable, setting it to `LITTLE`, `BIG`, `NETWORK` (alias for `BIG`) or `NATIVE` (the actual default).
-
-The `_endianness` of a struct, is an entry of the `Endianness` enum defined in `databytes.types`. You access them via `Endianness.NATIVE`, `Endianness.LITTLE`, `Endianness.BIG` or `Endianness.NETWORK`. The value are the ones used by the python `struct` module.
-Those enums have a `byte_order` property that will always resolve to the effective byte order, i.e. `Endianness.LITTLE` or `Endianness.BIG`.
-
-You can change the endianness of a struct by setting the `_endianness` class var:
-
-```python
-from databytes import BinaryStruct
-from databytes import types as t
+from databytes import types as t, Endianness
 
 class Data(BinaryStruct):
     _endianness = Endianness.LITTLE
     field: t.uint16
 ```
 
-This `Data` struct will be read/written in little endian.
-
-If you set the `_endianness` of a struct, all sub-structs must be defined with the same endianness.
+- When instantiating the struct with the `endianness` argument (in this case the value will override the class value for this instance):
 
 ```python
 from databytes import BinaryStruct
-from databytes import types as t
-
-class ChildData(BinaryStruct):
-    _endianness = Endianness.LITTLE
-    field: t.uint16
+from databytes import types as t, Endianness
 
 class Data(BinaryStruct):
-    _endianness = Endianness.LITTLE
+    _endianness = Endianness.BIG  # will be ignored so it's not necessary to add it
     field: t.uint16
-    child: ChildData
+
+data = Data(bytearray(1000), endianness=Endianness.LITTLE)
+```
+
+`Endianness` is an enum defined in `databytes.types` with the following values:
+
+- `Endianness.NATIVE` (default): the endianness of the system
+- `Endianness.LITTLE`
+- `Endianness.BIG`
+- `Endianness.NETWORK` (alias for `Endianness.BIG`)
+
+
+The default value is forced to `Endianness.NATIVE` and can be changed by setting the `DATABYTES_ENDIANNESS` environment variable (before the `databytes` library is loaded) to `LITTLE`, `BIG`, `NETWORK` (alias for `BIG`) or `NATIVE` (the actual default).
+
+The `_endianness` of a sub-struct defined on its class will be ignored: all sub-struts automatically inherit the endianness of their parent struct.
+
+
+```python
+from databytes import BinaryStruct
+from databytes import types as t, Endianness
+
+class Child(BinaryStruct):
+    _endianness = Endianness.BIG
+    value: t.uint16
+
+class Data1(BinaryStruct):
+    _endianness = Endianness.LITTLE
+    child: Child
+
+class Data2(BinaryStruct):
+    child: Child
+
+buffer = bytearray(2)
+
+child_alone = Child(buffer)
+child_alone.value = 2
+assert buffer == b"\x00\x02"  # child alone uses big endian from Child class endianness
+
+data1 = Data1(buffer)
+data1.child.value = 3
+assert buffer == b"\x03\x00"  # child uses little endian from Data1 class endianness
+
+data2 = Data2(buffer, endianness=Endianness.LITTLE)
+data2.child.value = 4
+assert buffer == b"\x04\x00"  # child uses little endian from Data2 instance endianness
+
 ```
 
 

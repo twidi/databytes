@@ -58,7 +58,7 @@ def test_invalid_endianness(monkeypatch):
         Endianness.get_default()
 
 
-def test_byte_order():
+def test_setting_via_class_attribute():
     class LittleEndianStruct(BinaryStruct):
         _endianness = Endianness.LITTLE
         value: t.uint16
@@ -107,7 +107,43 @@ def test_byte_order():
         assert buffer == b"\x12\x34"
 
 
-def test_endianness_coherence():
+def test_setting_via_instance_attribute():
+    class MyStruct(BinaryStruct):
+        value: t.uint16
+
+    # Test that the byte order is actually respected
+    buffer = bytearray(2)
+    value = 0x1234  # will be stored as 34 12 in little endian, 12 34 in big endian
+
+    # Little endian
+    lstruct = MyStruct(buffer, endianness=Endianness.LITTLE)
+    assert lstruct._endianness == Endianness.LITTLE
+    lstruct.value = value
+    assert buffer == b"\x34\x12"
+
+    # Big endian
+    bstruct = MyStruct(buffer, endianness=Endianness.BIG)
+    assert bstruct._endianness == Endianness.BIG
+    bstruct.value = value
+    assert buffer == b"\x12\x34"
+
+    # Network (equivalent to big endian)
+    wstruct = MyStruct(buffer, endianness=Endianness.NETWORK)
+    assert wstruct._endianness == Endianness.NETWORK
+    wstruct.value = value
+    assert buffer == b"\x12\x34"
+
+    # Native (depend on the system)
+    nstruct = MyStruct(buffer, endianness=Endianness.NATIVE)
+    assert nstruct._endianness == Endianness.NATIVE
+    nstruct.value = value
+    if sys.byteorder == "little":
+        assert buffer == b"\x34\x12"
+    else:
+        assert buffer == b"\x12\x34"
+
+
+def test_endianness_passing():
     class LittleEndianChildStruct(BinaryStruct):
         _endianness = Endianness.LITTLE
         value: t.uint16
@@ -116,14 +152,77 @@ def test_endianness_coherence():
         _endianness = Endianness.BIG
         value: t.uint16
 
-    class BigEndianParentStruct(BinaryStruct):
+    class BigEndianParentWithBigEndianChildStruct(BinaryStruct):
         _endianness = Endianness.BIG
         value: t.uint16
         child: BigEndianChildStruct
 
-    with pytest.raises(ValueError, match="Sub-struct LittleEndianChildStruct must have same endianness as parent: BIG"):
+    class BigEndianParentWithLittleEndianChildStruct(BinaryStruct):
+        _endianness = Endianness.BIG
+        value: t.uint16
+        child: LittleEndianChildStruct
 
-        class LittleEndianParentStruct(BinaryStruct):
-            _endianness = Endianness.BIG
-            value: t.uint16
-            child: LittleEndianChildStruct
+    class LittleEndianParentWithBigEndianChildStruct(BinaryStruct):
+        _endianness = Endianness.LITTLE
+        value: t.uint16
+        child: BigEndianChildStruct
+
+    class LittleEndianParentWithLittleEndianChildStruct(BinaryStruct):
+        _endianness = Endianness.LITTLE
+        value: t.uint16
+        child: LittleEndianChildStruct
+
+    buffer = bytearray(4)
+    value = 0x1234  # will be stored as 34 12 in little endian, 12 34 in big endian
+    b_buffer = t.NULL * 2 + b"\x12\x34"
+    l_buffer = t.NULL * 2 + b"\x34\x12"
+
+    # passing class endianness to sub-struct
+    bbstruct = BigEndianParentWithBigEndianChildStruct(buffer)
+    assert bbstruct.child._endianness == Endianness.BIG
+    bbstruct.child.value = value
+    assert buffer == b_buffer
+
+    blstruct = BigEndianParentWithLittleEndianChildStruct(buffer)
+    assert blstruct.child._endianness == Endianness.BIG
+    blstruct.child.value = value
+    assert buffer == b_buffer
+
+    lbstruct = LittleEndianParentWithBigEndianChildStruct(buffer)
+    assert lbstruct.child._endianness == Endianness.LITTLE
+    lbstruct.child.value = value
+    assert buffer == l_buffer
+
+    llstruct = LittleEndianParentWithLittleEndianChildStruct(buffer)
+    assert llstruct.child._endianness == Endianness.LITTLE
+    llstruct.child.value = value
+    assert buffer == l_buffer
+
+    class ParentWithBigEndianChildStruct(BinaryStruct):
+        value: t.uint16
+        child: BigEndianChildStruct
+
+    class ParentWithLittleEndianChildStruct(BinaryStruct):
+        value: t.uint16
+        child: LittleEndianChildStruct
+
+    # passing instance endianness to sub-struct
+    bstruct = ParentWithBigEndianChildStruct(buffer, endianness=Endianness.BIG)
+    assert bstruct.child._endianness == Endianness.BIG
+    bstruct.child.value = value
+    assert buffer == b_buffer
+
+    bstruct = ParentWithBigEndianChildStruct(buffer, endianness=Endianness.LITTLE)
+    assert bstruct.child._endianness == Endianness.LITTLE
+    bstruct.child.value = value
+    assert buffer == l_buffer
+
+    lstruct = ParentWithLittleEndianChildStruct(buffer, endianness=Endianness.BIG)
+    assert lstruct.child._endianness == Endianness.BIG
+    lstruct.child.value = value
+    assert buffer == b_buffer
+
+    lstruct = ParentWithLittleEndianChildStruct(buffer, endianness=Endianness.LITTLE)
+    assert lstruct.child._endianness == Endianness.LITTLE
+    lstruct.child.value = value
+    assert buffer == l_buffer
