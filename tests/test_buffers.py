@@ -290,3 +290,34 @@ def test_buffer_offset() -> None:
     assert struct.value == 4
     assert struct.child.children[0].value == 5
     assert struct.child.children[1].value == 6
+
+
+def test_clearing_buffer() -> None:
+    # Test clearing buffer
+
+    class ChildStruct(BinaryStruct):
+        value: t.char
+
+    class ParentStruct(BinaryStruct):
+        children: ChildStruct[2]
+
+    class GrandParentStruct(BinaryStruct):
+        value: t.char
+        child: ParentStruct
+
+    buffer = bytearray(b"a" * 50)
+    struct = GrandParentStruct(buffer, offset=10)
+    assert struct.value == b"a"
+    assert struct.child.children[0].value == b"a"
+    assert struct.child.children[1].value == b"a"
+
+    struct.clear_buffer()
+
+    # our values should be NULL
+    assert struct.value == t.NULL
+    assert struct.child.children[0].value == t.NULL
+    assert struct.child.children[1].value == t.NULL
+
+    # buffer outside of our offset + size should be unchanged
+
+    assert buffer == b"a" * 10 + t.NULL * 3 + b"a" * 37

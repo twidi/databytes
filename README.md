@@ -499,6 +499,10 @@ assert  data2.to_dict() == {
 }
 ```
 
+### Clearing the buffer
+
+The `clear_buffer()` method allows you to clear the buffer, by filling the space occuped by the structure, starting at the offset it was initialized with, with NULL bytes, for the whole space used by its fields and sub-structs.
+
 ### Freeing the buffer
 
 When using shared memory for example, the buffer must be freed before freeing the shared memory. To do that, use the `free_buffer` method:

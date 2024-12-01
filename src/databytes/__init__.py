@@ -22,7 +22,7 @@ from typing import (
 
 from typing_extensions import _AnnotatedAlias
 
-from .types import Buffer, DBType, Dimensions, Endianness, SubStruct, string
+from .types import Buffer, DBType, Dimensions, Endianness, SubStruct
 
 T = TypeVar("T")
 BT = TypeVar("BT", bound="BinaryStruct")
@@ -212,6 +212,9 @@ class BinaryStruct:
             pack_into(f"{self._endianness}{self._struct_format}", self._buffer, self._offset, *content)  # type: ignore[arg-type]
         except StructError as e:
             raise ValueError("Failed to fill content into buffer") from e
+
+    def clear_buffer(self) -> None:
+        pack_into(f"{self._endianness}{self._nb_bytes}s", self._buffer, self._offset, b"")  # type: ignore[arg-type]
 
     def fill_from(self: BT, other: BT) -> None:
         if not isinstance(other, self.__class__):
