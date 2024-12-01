@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from math import prod
 from typing import TYPE_CHECKING, Literal, NamedTuple, TypeAlias, Union
 
 from . import BinaryStruct
@@ -55,17 +54,9 @@ def get_layout_info(
     python_type: type
     for name, field in struct_or_class._fields.items():
         python_type = field.db_type.python_type
-        dimensions = field.dimensions if field.dimensions else None
-        nb_items = 1
-        if dimensions is not None:
-            if field.db_type.collapse_first_dimension:
-                dimensions = dimensions[1:]
-            if dimensions:
-                for _ in dimensions:
-                    python_type = list[python_type]  # type: ignore[valid-type]
-                nb_items = prod(dimensions)
-            else:
-                dimensions = None
+        if field.dimensions is not None:
+            for _ in field.dimensions:
+                python_type = list[python_type]  # type: ignore[valid-type]
 
         is_sub_struct = isinstance(field.db_type, SubStruct)
         sub_struct_info: StructLayoutInfo | None = None
@@ -77,8 +68,8 @@ def get_layout_info(
             offset=base_offset + field.offset,
             nb_bytes=field.nb_bytes,
             struct_format=field.db_type.struct_format,
-            nb_items=nb_items,
-            dimensions=dimensions,
+            nb_items=field.nb_items,
+            dimensions=field.dimensions or None,
             python_type=field.db_type.python_type,
             python_full_type=python_type,
             is_sub_struct=is_sub_struct,

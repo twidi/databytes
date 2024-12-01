@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property
+from math import prod
 from multiprocessing.shared_memory import SharedMemory
 from struct import Struct, pack_into, unpack_from
 from struct import error as StructError
@@ -56,31 +57,14 @@ class FieldInfo:
 
     @cached_property
     def nb_items(self) -> int:
-        if not self.dimensions:
-            return 1
-        result = 1
-        for dimension in self.dimensions:
-            result *= dimension
-        return result
+        return prod(self.dimensions) if self.dimensions else 1
 
     def read_from_buffer(self, buffer: Buffer, instance_offset: int, endianness: Endianness) -> Any:
         values = self.raw_structs[endianness].unpack_from(buffer, instance_offset + self.offset)  # type: ignore[arg-type]
-        if self.is_array:
-            # Special case for char arrays: convert to string
-            if self.db_type.collapse_first_dimension:
-                # First dimension is kept together length, convert each chunk to a single value
-                items = [self.db_type.convert_first_dimension(value) for value in values]
-                if self.nb_dimensions == 1:
-                    # Single entry
-                    return items[0]
-                # Array of items, reshape according to remaining dimensions
-                return _reshape_array(items, self.dimensions[1:])
-
-            # For arrays, convert to a list of values and reshape according to dimensions
-            return _reshape_array(list(values), self.dimensions)
-
-        # Single value
-        return values[0]
+        if self.db_type.needs_decoding:
+            values = tuple(self.db_type.decode(value) for value in values)
+        # For arrays, convert to a list of values and reshape according to dimensions
+        return _reshape_array(list(values), self.dimensions) if self.is_array else values[0]
 
     def write_to_buffer(self, buffer: Buffer, instance_offset: int, endianness: Endianness, value: Any) -> None:
         """Write a value to the buffer at the field's offset.
@@ -89,11 +73,11 @@ class FieldInfo:
             buffer: The buffer to write to
             value: The value to write
         """
-        if isinstance(buffer, (bytes, str)):
+        if isinstance(buffer, bytes):
             raise TypeError("Cannot write to immutable buffer")
 
         if isinstance(self.db_type, SubStruct):
-            # For sub-structs, we don't write directly, the buffer property setter handles it
+            # For sub-structs, we don't write directly, it's directly handled by the sub-struct
             return
 
         values: Iterator[Any]
@@ -104,13 +88,10 @@ class FieldInfo:
             if self.nb_dimensions > 1:
                 value = _iterate_array_items(value, self.nb_dimensions)
 
-            if self.db_type.collapse_first_dimension:
-                if self.nb_dimensions == 1:
-                    value = iter((value,))
-            values = (self.db_type.convert_to_bytes(v) for v in value)
+            values = (self.db_type.encode(v) for v in value)
         else:
             # Single value
-            values = iter((self.db_type.convert_to_bytes(value),))
+            values = iter((self.db_type.encode(value),))
 
         # Pack values into buffer
         try:
@@ -244,7 +225,7 @@ class BinaryStruct:
         for field in self._fields.values():
             value = getattr(self, field.name)
 
-            if not field.is_array or field.db_type.collapse_first_dimension and field.nb_dimensions == 1:
+            if not field.is_array:
                 result[field.name] = value.to_dict() if isinstance(value, BinaryStruct) else value
                 continue
 
@@ -252,8 +233,7 @@ class BinaryStruct:
                 value = _iterate_array_items(value, field.nb_dimensions)
 
             result[field.name] = _reshape_array(
-                [struct.to_dict() if isinstance(struct, BinaryStruct) else struct for struct in value],
-                field.dimensions[(1 if field.db_type.collapse_first_dimension else 0) :],
+                [struct.to_dict() if isinstance(struct, BinaryStruct) else struct for struct in value], field.dimensions
             )
 
         return result

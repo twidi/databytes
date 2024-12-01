@@ -15,8 +15,10 @@ class ComplexStruct(BinaryStruct):
 
     # Field with no dimension
     simple_int: t.uint32
-    # String with one mandatory dimension
+    # String with one dimension, the max lengths
     fixed_string: t.string[10]
+    # Matrix of fixed-length strings
+    string_matrix: t.string[4, 3, 2]  # list of 2 lists of 3 strings of max length 4
     # Field as an array
     int_array: t.uint16[3]
     # Field as a matrix
@@ -73,8 +75,8 @@ def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: boo
         struct_class=ComplexStruct,
         endianness=Endianness.LITTLE,
         byte_order=Endianness.LITTLE,
-        struct_format="I10s3H6fBHBHBHBHBHBHBHBHBH",
-        nb_bytes=71,
+        struct_format="I10s4s4s4s4s4s4s3H6fBHBHBHBHBHBHBHBHBH",
+        nb_bytes=95,
         offset=base_offset,
         fields={
             "simple_int": FieldLayoutInfo(
@@ -99,9 +101,20 @@ def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: boo
                 python_full_type=str,
                 is_sub_struct=False,
             ),
+            "string_matrix": FieldLayoutInfo(
+                name="string_matrix",
+                offset=base_offset + 14,
+                nb_bytes=24,
+                struct_format="4s4s4s4s4s4s",
+                nb_items=6,
+                dimensions=(3, 2),
+                python_type=str,
+                python_full_type=list[list[str]],
+                is_sub_struct=False,
+            ),
             "int_array": FieldLayoutInfo(
                 name="int_array",
-                offset=base_offset + 14,
+                offset=base_offset + 38,
                 nb_bytes=6,
                 struct_format="3H",
                 nb_items=3,
@@ -112,7 +125,7 @@ def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: boo
             ),
             "float_matrix": FieldLayoutInfo(
                 name="float_matrix",
-                offset=base_offset + 20,
+                offset=base_offset + 44,
                 nb_bytes=24,
                 struct_format="6f",
                 nb_items=6,
@@ -123,7 +136,7 @@ def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: boo
             ),
             "sub": FieldLayoutInfo(
                 name="sub",
-                offset=base_offset + 44,
+                offset=base_offset + 68,
                 nb_bytes=3,
                 struct_format="BH",
                 nb_items=1,
@@ -135,7 +148,7 @@ def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: boo
             ),
             "sub_array": FieldLayoutInfo(
                 name="sub_array",
-                offset=base_offset + 47,
+                offset=base_offset + 71,
                 nb_bytes=6,
                 struct_format="BHBH",
                 nb_items=2,
@@ -147,7 +160,7 @@ def get_expected_complex_struct_layout_info(base_offset: int = 0, with_subs: boo
             ),
             "sub_matrix": FieldLayoutInfo(
                 name="sub_matrix",
-                offset=base_offset + 53,
+                offset=base_offset + 77,
                 nb_bytes=18,
                 struct_format="BHBHBHBHBHBH",
                 nb_items=6,

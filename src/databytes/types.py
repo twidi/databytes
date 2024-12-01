@@ -14,23 +14,23 @@ from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypeVar, cas
 import numpy as np
 from typing_extensions import _AnnotatedAlias
 
-Buffer: TypeAlias = bytes | bytearray | memoryview | mmap.mmap | array.array | ctypes.Array | np.ndarray  # type: ignore[type-arg]
+Buffer: TypeAlias = builtins.bytes | bytearray | memoryview | mmap.mmap | array.array | ctypes.Array | np.ndarray  # type: ignore[type-arg]
 
 
-Dimensions: TypeAlias = tuple[int, ...]
+Dimensions: TypeAlias = tuple[builtins.int, ...]
 
 DBPythonType = TypeVar("DBPythonType")
 
 NULL = b"\0"
 
 
-class Endianness(str, enum.Enum):
+class Endianness(builtins.str, enum.Enum):
     NATIVE = "="
     LITTLE = "<"
     BIG = ">"
     NETWORK = "!"
 
-    def __str__(self) -> str:
+    def __str__(self) -> builtins.str:
         return self.value
 
     @property
@@ -53,30 +53,22 @@ class Endianness(str, enum.Enum):
 
 class DBType(Generic[DBPythonType]):
     single_nb_bytes: builtins.int
-    single_struct_format: str
+    single_struct_format: builtins.str
     # `python_type` will be auto set by __init_subclass__ reading the type argument DBPythonType (except for SubStruct)
     python_type: type[DBPythonType]
     dimensions: Dimensions = ()
-    collapse_first_dimension: bool = False
+    needs_decoding = False
 
     def __init__(self, dimensions: Dimensions = ()) -> None:
         self.dimensions = dimensions
 
     @cached_property
-    def nb_items(self) -> int:
+    def nb_items(self) -> builtins.int:
         return prod(self.dimensions) if self.dimensions else 1
 
     @cached_property
-    def struct_format(self) -> str:
-        if self.nb_items == 1:
-            return self.single_struct_format
-        elif self.collapse_first_dimension:
-            length, dimensions = self.dimensions[0], self.dimensions[1:]
-            if dimensions:
-                return f"{length}{self.single_struct_format}" * prod(dimensions)
-            return f"{length}{self.single_struct_format}"
-        else:
-            return f"{self.nb_items}{self.single_struct_format}"
+    def struct_format(self) -> builtins.str:
+        return self.single_struct_format if self.nb_items == 1 else f"{self.nb_items}{self.single_struct_format}"
 
     @cached_property
     def nb_bytes(self) -> builtins.int:
@@ -89,22 +81,14 @@ class DBType(Generic[DBPythonType]):
         if not isinstance(params, tuple):
             params = (params,)
         for param in params:
-            if not isinstance(param, int) or param <= 0:
+            if not isinstance(param, builtins.int) or param <= 0:
                 raise TypeError(f"{cls.__name__}[*dimensions]: dimensions should be literal positive integers.")
         return _AnnotatedAlias(cls, params)
 
-    def convert_first_dimension(self, data: bytes) -> DBPythonType:
+    def decode(self, data: builtins.bytes) -> DBPythonType:
         return cast(DBPythonType, data)
 
-    def convert_to_bytes(self, value: Any) -> Any:
-        """Convert a Python value to a format suitable for struct.pack.
-
-        Args:
-            value: The value to convert
-
-        Returns:
-            The converted value ready for struct.pack
-        """
+    def encode(self, value: DBPythonType) -> DBPythonType:
         if not isinstance(value, self.python_type):
             raise TypeError(f"Expected {self.python_type.__name__}, got {type(value).__name__}")
         return value
@@ -194,38 +178,14 @@ class bool(DBType[builtins.bool]):
     single_nb_bytes = 1
     single_struct_format = "?"
 
-    def convert_to_bytes(self, value: Any) -> builtins.bool:
-        """Convert a value to bool.
-
-        Args:
-            value: The value to convert
-
-        Returns:
-            The value as a bool
-        """
-        if not isinstance(value, builtins.bool):
-            raise TypeError(f"Expected bool, got {type(value).__name__}")
-
-        return value
-
 
 class char(DBType[builtins.bytes]):
     # used for single chars or arrays of chars (returned as byte or array of bytes)
     single_nb_bytes = 1
     single_struct_format = "c"
 
-    def convert_to_bytes(self, value: Any) -> bytes:
-        """Convert a character value to bytes.
-
-        Args:
-            value: The character value to convert (bytes)
-
-        Returns:
-            The character as a single byte
-        """
-        if not isinstance(value, builtins.bytes):
-            raise TypeError(f"Expected bytes, got {type(value).__name__}")
-
+    def encode(self, value: builtins.bytes) -> builtins.bytes:
+        value = super().encode(value)
         if len(value) != 1:
             raise ValueError(f"Bytes value must be exactly 1 byte long, got {len(value)}")
 
@@ -236,39 +196,32 @@ class string(DBType[builtins.str]):
     # used for single strings or arrays of strings (decoded from bytes to str)
     single_nb_bytes = 1
     single_struct_format = "s"  # return a string, not an array of chars
-    collapse_first_dimension = True
+    needs_decoding = True
 
     def __init__(self, dimensions: Dimensions = ()) -> None:
         # If no dimensions provided, assume it's a single char string
-        if not dimensions:
-            dimensions = (1,)
-        super().__init__(dimensions)
+        self.max_length = dimensions[0] if dimensions else 1
+        super().__init__(dimensions[1:] if dimensions else ())
 
-    def convert_first_dimension(self, data: bytes) -> str:
+    @cached_property
+    def struct_format(self) -> builtins.str:
+        base = self.single_struct_format if self.max_length == 1 else f"{self.max_length}{self.single_struct_format}"
+        return base * self.nb_items
+
+    @cached_property
+    def nb_bytes(self) -> builtins.int:
+        return self.max_length * super().nb_bytes
+
+    def decode(self, data: builtins.bytes) -> builtins.str:
         return data.rstrip(b"\x00").decode()
 
-    def convert_to_bytes(self, value: Any) -> bytes:
-        """Convert a string value to bytes.
-
-        Args:
-            value: The string value to convert
-
-        Returns:
-            The string as bytes, null-padded to the required length
-
-        Raises:
-            TypeError: If value is not a string
-            ValueError: If string is longer than the allocated space
-        """
-        if not isinstance(value, builtins.str):
-            raise TypeError(f"Expected str, got {type(value).__name__}")
-
+    def encode(self, value: builtins.str) -> builtins.bytes:  # type: ignore[override]
+        value = super().encode(value)
         encoded = value.encode()
-        if len(encoded) > self.dimensions[0]:
-            raise ValueError(f"String is too long ({len(encoded)} bytes), maximum is {self.dimensions[0]} bytes")
-
-        # Only pad with nulls, no truncation
-        return encoded.ljust(self.dimensions[0], b"\x00")
+        if len(encoded) > self.max_length:
+            raise ValueError(f"String is too long ({len(encoded)} bytes), maximum is {self.max_length} bytes")
+        # null padding is handled by the struct
+        return encoded
 
 
 if TYPE_CHECKING:
@@ -285,5 +238,5 @@ class SubStruct(DBType[DBSubStructPythonType]):
         self.single_struct_format = python_type._struct_format
 
     @cached_property
-    def struct_format(self) -> str:
+    def struct_format(self) -> builtins.str:
         return self.single_struct_format * self.nb_items
