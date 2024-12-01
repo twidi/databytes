@@ -64,8 +64,7 @@ def test_string_field() -> None:
     expected_content += b"ABCDEF"
     expected_buffer = expected_content + t.NULL * (buffer_size - len(expected_content))
     assert buffer == expected_buffer
-    assert data.str_array[0] == "ABC"
-    assert data.str_array[1] == "DEF"
+    assert data.str_array == ["ABC", "DEF"]
 
     with pytest.raises(ValueError):
         data.str_array = ["Too long string", "Another"]
@@ -79,8 +78,7 @@ def test_string_field() -> None:
     expected_content += b"A\0B\0C\0D\0E\0F\0"
     expected_buffer = expected_content + t.NULL * (buffer_size - len(expected_content))
     assert buffer == expected_buffer
-    assert data.str_matrix[0] == ["A", "B", "C"]
-    assert data.str_matrix[1] == ["D", "E", "F"]
+    assert data.str_matrix == [["A", "B", "C"], ["D", "E", "F"]]
 
     with pytest.raises(ValueError):
         data.str_matrix = [["A", "B"], ["C", "D"]]  # Not enough chars

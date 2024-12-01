@@ -456,6 +456,49 @@ assert data3.children[1].field2 == "Hello"
 
 ```
 
+### Extracting data to dictionary
+
+The `to_dict()` method allows you to convert a `BinaryStruct` instance and all its fields into a Python dictionary. This is particularly useful when you need to work with the data in a more standard Python format or when you want to serialize the data.
+
+Example:
+```python
+from databytes import BinaryStruct
+from databytes import types as t
+
+# Define a complex structure
+class Child(BinaryStruct):
+    field1: t.int32
+    field2: t.string[5]
+
+class Parent(BinaryStruct):
+    value: t.int32
+    children: Child[2]  # Array of 2 Child structures
+    matrix: t.uint8[2, 3]  # Array of 3 rows of 2 int
+
+# Create and fill the structure
+buffer = bytearray(data._nb_bytes)
+data = Parent(buffer)
+
+data.value = 42
+data.children[0].field1 = 1
+data.children[0].field2 = "Hello"
+data.children[1].field1 = 2
+data.children[1].field2 = "World"
+data.matrix = [[1, 2], [3, 4], [5, 6]]
+
+data2 = Parent(buffer)
+
+# Convert to dictionary
+assert  data2.to_dict() == {
+    "value": 42,
+    "children": [
+        {"field1": 1, "field2": "Hello"},
+        {"field1": 2, "field2": "World"}
+    ],
+    "matrix": [[1, 2], [3, 4], [5, 6]]
+}
+```
+
 ### Freeing the buffer
 
 When using shared memory for example, the buffer must be freed before freeing the shared memory. To do that, use the `free_buffer` method:

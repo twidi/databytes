@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Ability to fill a struct from another one (`fill_from` method)
+- Ability to extract data from a struct as a dictionary (`to_dict` method)
 
 ## [1.2.1] - 2024-11-30
 

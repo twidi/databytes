@@ -8,11 +8,14 @@ from struct import error as StructError
 from typing import (
     Any,
     ClassVar,
+    Generator,
+    Iterator,
     NamedTuple,
     Optional,
     TypeAlias,
     TypeVar,
     Union,
+    cast,
     get_type_hints,
 )
 
@@ -60,19 +63,6 @@ class FieldInfo:
             result *= dimension
         return result
 
-    @staticmethod
-    def _reshape_array(array: list[T], dimensions: Dimensions) -> RecursiveArray[T]:
-        """Reshape a flat array into nested lists according to the dimensions.
-        For example with dimensions (2, 3) and values [1, 2, 3, 4, 5, 6],
-        returns [[1, 2], [3, 4], [5, 6]]."""
-        if len(dimensions) <= 1:
-            return array
-        current: RecursiveArray[T] = array
-        for dim in dimensions[:-1]:
-            chunk_size = len(current) // (len(current) // dim)
-            current = [current[i : i + chunk_size] for i in range(0, len(current), chunk_size)]
-        return current
-
     def read_from_buffer(self, buffer: Buffer, instance_offset: int, endianness: Endianness) -> Any:
         values = self.raw_structs[endianness].unpack_from(buffer, instance_offset + self.offset)  # type: ignore[arg-type]
         if self.is_array:
@@ -84,10 +74,10 @@ class FieldInfo:
                     # Single entry
                     return items[0]
                 # Array of items, reshape according to remaining dimensions
-                return self._reshape_array(items, self.dimensions[1:])
+                return _reshape_array(items, self.dimensions[1:])
 
             # For arrays, convert to a list of values and reshape according to dimensions
-            return self._reshape_array(list(values), self.dimensions)
+            return _reshape_array(list(values), self.dimensions)
 
         # Single value
         return values[0]
@@ -106,31 +96,53 @@ class FieldInfo:
             # For sub-structs, we don't write directly, the buffer property setter handles it
             return
 
+        values: Iterator[Any]
+
         # Convert value to the format expected by struct.pack
         if self.is_array:
             # Flatten the array if needed
             if self.nb_dimensions > 1:
-
-                def flatten(arr: RecursiveArray[Any], expected_dims: int) -> list[Any]:
-                    if expected_dims <= 1:
-                        return arr if isinstance(arr, list) else [arr]
-                    return [item for sublist in arr for item in flatten(sublist, expected_dims - 1)]
-
-                value = flatten(value, self.nb_dimensions)
+                value = _iterate_array_items(value, self.nb_dimensions)
 
             if self.db_type.collapse_first_dimension:
                 if self.nb_dimensions == 1:
-                    value = [value]
-            values = [self.db_type.convert_to_bytes(v) for v in value]
+                    value = iter((value,))
+            values = (self.db_type.convert_to_bytes(v) for v in value)
         else:
             # Single value
-            values = [self.db_type.convert_to_bytes(value)]
+            values = iter((self.db_type.convert_to_bytes(value),))
 
         # Pack values into buffer
         try:
             self.raw_structs[endianness].pack_into(buffer, instance_offset + self.offset, *values)  # type: ignore[arg-type]
         except StructError as e:
             raise ValueError(f"Failed to pack value(s) {values} into buffer") from e
+
+
+def _iterate_array_items(arr: T | RecursiveArray[T], nb_dimensions: int) -> Iterator[T]:
+    if nb_dimensions <= 1:
+        if isinstance(arr, list):
+            yield from cast(list[T], arr)
+        else:
+            yield arr
+        return
+    if not isinstance(arr, list):
+        raise TypeError(f"Expected list, got {type(arr)}")
+    for item in arr:
+        yield from _iterate_array_items(item, nb_dimensions - 1)
+
+
+def _reshape_array(array: list[T], dimensions: Dimensions) -> RecursiveArray[T]:
+    """Reshape a flat array into nested lists according to the dimensions.
+    For example with dimensions (2, 3) and values [1, 2, 3, 4, 5, 6],
+    returns [[1, 2], [3, 4], [5, 6]]."""
+    if len(dimensions) <= 1:
+        return array
+    current: RecursiveArray[T] = array
+    for dim in dimensions[:-1]:
+        chunk_size = len(current) // (len(current) // dim)
+        current = [current[i : i + chunk_size] for i in range(0, len(current), chunk_size)]
+    return current
 
 
 class FieldDescriptor:
@@ -225,6 +237,30 @@ class BinaryStruct:
             raise ValueError(f"Cannot fill {self.__class__.__name__} from {other.__class__.__name__}")
         self.set_raw_content(other.get_raw_content())
 
+    def _to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        value: Any
+
+        for field in self._fields.values():
+            value = getattr(self, field.name)
+
+            if not field.is_array or field.db_type.collapse_first_dimension and field.nb_dimensions == 1:
+                result[field.name] = value.to_dict() if isinstance(value, BinaryStruct) else value
+                continue
+
+            if field.nb_dimensions > 1:
+                value = _iterate_array_items(value, field.nb_dimensions)
+
+            result[field.name] = _reshape_array(
+                [struct.to_dict() if isinstance(struct, BinaryStruct) else struct for struct in value],
+                field.dimensions[(1 if field.db_type.collapse_first_dimension else 0) :],
+            )
+
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        return self._to_dict()
+
     def _create_sub_instances(self) -> None:
         """Create sub-instances for all sub-struct fields."""
 
@@ -248,7 +284,7 @@ class BinaryStruct:
                 struct = create_struct(field.db_type.python_type, offset)
                 items.append(struct)
 
-            setattr(self, field.name, field._reshape_array(items, field.dimensions))
+            setattr(self, field.name, _reshape_array(items, field.dimensions))
 
     @classmethod
     def __class_getitem__(cls, params: Any) -> _AnnotatedAlias:
