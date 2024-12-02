@@ -499,6 +499,60 @@ assert  data2.to_dict() == {
 }
 ```
 
+### Importing data from a dictionary
+
+The `fill_from_dict` method allows you to populate a structure from a Python dictionary. This is particularly useful when working with JSON data or when you want to initialize a structure with multiple values at once.
+
+```python
+from databytes import BinaryStruct
+from databytes import types as t
+
+class Point(BinaryStruct):
+    x: t.uint16
+    y: t.uint16
+
+class Line(BinaryStruct):
+    start: Point
+    end: Point
+    color: t.string[10]
+
+# Create a buffer and structure
+buffer = bytearray(Line._nb_bytes)
+line = Line(buffer)
+
+# Fill the structure from a dictionary
+line.fill_from_dict({
+    "start": {"x": 10, "y": 20},
+    "end": {"x": 30, "y": 40},
+    "color": "red"
+})
+
+# You can also partially update the structure
+line.fill_from_dict({"color": "blue"})  # Only updates the color
+
+# Use clear_unset=True to reset non-specified fields to null values
+line.fill_from_dict({"start": {"x": 0, "y": 0}}, clear_unset=True)
+# Now end.x, end.y and color are reset to null bytes (i.e. 0s and empty string)
+```
+
+The method works with any level of nesting and with arrays:
+
+```python
+class Matrix(BinaryStruct):
+    values: t.uint16[2, 3]  # 2x3 matrix
+    name: t.string[10]
+
+buffer = bytearray(Matrix._nb_bytes)
+matrix = Matrix(buffer)
+
+matrix.fill_from_dict({
+    "values": [[1, 2, 3], [4, 5, 6]],
+    "name": "test"
+})
+```
+
+Note that even if you can skip keys, you cannot pass partial arrays. Arrays given in the dict must have the exact same dimensions as the ones defined in the structure.
+
 ### Clearing the buffer
 
 The `clear_buffer()` method allows you to clear the buffer, by filling the space occuped by the structure, starting at the offset it was initialized with, with NULL bytes, for the whole space used by its fields and sub-structs.

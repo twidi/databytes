@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Ability to fill a struct from a dictionary (`fill_from_dict` method)
 - Ability to fill a struct from another one (`fill_from` method)
 - Ability to extract data from a struct as a dictionary (`to_dict` method)
 - Ability to clear the buffer a struct points to (`clear_buffer` method)

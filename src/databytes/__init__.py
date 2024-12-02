@@ -119,11 +119,30 @@ def _reshape_array(array: list[T], dimensions: Dimensions) -> RecursiveArray[T]:
     returns [[1, 2], [3, 4], [5, 6]]."""
     if len(dimensions) <= 1:
         return array
-    current: RecursiveArray[T] = array
+    current: RecursiveArray[T] = array[:]
     for dim in dimensions[:-1]:
         chunk_size = len(current) // (len(current) // dim)
         current = [current[i : i + chunk_size] for i in range(0, len(current), chunk_size)]
     return current
+
+
+def _extract_dimensions(lst: Any) -> Dimensions:
+    if not isinstance(lst, list):
+        return ()
+
+    shape = [len(lst)]
+
+    if lst and isinstance(lst[0], list):
+        sub_shape = _extract_dimensions(lst[0])
+
+        # Verify all sublists have same shape
+        for item in lst[1:]:
+            if _extract_dimensions(item) != sub_shape:
+                raise ValueError("Inconsistent dimensions")
+
+        shape.extend(sub_shape)
+
+    return tuple(shape[::-1])
 
 
 class FieldDescriptor:
@@ -220,6 +239,59 @@ class BinaryStruct:
         if not isinstance(other, self.__class__):
             raise ValueError(f"Cannot fill {self.__class__.__name__} from {other.__class__.__name__}")
         self.set_raw_content(other.get_raw_content())
+
+    def fill_from_dict(self, data: dict[str, Any], *, clear_unset: bool = False) -> None:
+        if not isinstance(data, dict):
+            raise TypeError(f"Expected dict, got {type(data)}")
+
+        if clear_unset:
+            # clear once and for all so no need to pass the `clear_unset` argument to sub structs
+            self.clear_buffer()
+
+        def handle_array(recipient: list[Any], dict_items: list[Any], field_is_struct: bool) -> None:
+            for index, dict_item in enumerate(dict_items):
+                if isinstance(dict_item, list):
+                    handle_array(recipient[index], dict_item, field_is_struct)
+                else:
+                    if field_is_struct:
+                        recipient[index].fill_from_dict(dict_item)
+                    else:
+                        recipient[index] = dict_item
+
+        for field in self._fields.values():
+            if field.name not in data:
+                continue
+
+            field_is_struct = isinstance(field.db_type, SubStruct)
+            value = data[field.name]
+
+            if not field.is_array:
+                if field_is_struct:
+                    if not isinstance(value, dict):
+                        raise TypeError(f"Expected dict for field {field.name}, got {type(value)}")
+                    getattr(self, field.name).fill_from_dict(value)
+                else:
+                    setattr(self, field.name, value)
+                continue
+
+            if not isinstance(value, list):
+                raise TypeError(f"Expected list for field {field.name}, got {type(value)}")
+
+            if (other_dimensions := _extract_dimensions(value)) != field.dimensions:
+                raise ValueError(
+                    f"Invalid dimensions for field {field.name}: "
+                    f"got {other_dimensions}, expected {field.dimensions}"
+                )
+
+            if field_is_struct:
+                recipient = getattr(self, field.name)
+            else:
+                recipient = _reshape_array([None] * field.nb_items, field.dimensions)
+
+            handle_array(recipient, value, field_is_struct)
+
+            if not field_is_struct:
+                setattr(self, field.name, recipient)
 
     def _to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
