@@ -81,6 +81,24 @@ assert rect2.selected_points[1].name == "Selected 2"
 assert rect2.selected_points[1].x == 3
 assert rect2.selected_points[1].y == 4
 
+# Set many values at once
+rect2.fill_from_dict({
+    "top_left": {"name": "Left top", "x": 10, "y": 10},
+    "bottom_right": {"name": "Right bottom", "x": 20, "y": 20},
+})
+assert rect2.top_left.name == "Left top"
+assert rect2.top_left.x == 10
+assert rect2.top_left.y == 10
+assert rect2.bottom_right.name == "Right bottom"
+assert rect2.bottom_right.x == 20
+assert rect2.bottom_right.y == 20
+
+# Or extract the data as a dictionary
+assert rect2.bottom_right.to_dict() == {
+    "name": "Right bottom",
+    "x": 20,
+    "y": 20
+}
 ```
 
 
