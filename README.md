@@ -1,7 +1,7 @@
 # DataBytes
 
 [![PyPI version](https://badge.fury.io/py/databytes.svg)](https://pypi.org/project/databytes/)
-[![CI](https://github.com/twidi/databytes/actions/workflows/lint-and-tests.yml/badge.svg?branch=main)](https://github.com/twidi/databytes/actions/workflows/ci.yml)
+[![CI](https://github.com/twidi/databytes/actions/workflows/lint-and-tests.yml/badge.svg?branch=main)](https://github.com/twidi/databytes/actions/workflows/lint-and-tests.yml)
 
 A Python library providing a class-based approach to serialize and deserialize binary data, built on top of Python's `struct` module. DataBytes makes it easy to work with binary structures, shared memory, and memory-mapped files in a type-safe and object-oriented way.
 
